@@ -11,10 +11,15 @@ import app.neokeyboard.suggest.CommitProcessor
 import app.neokeyboard.suggest.NoOpSuggestions
 import app.neokeyboard.suggest.SuggestionEngine
 import app.neokeyboard.telex.TelexEngine
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 
 /**
- * Sự kiện phím → Telex → InputConnection. Giữ engine Telex thuần và pipeline composing;
- * âm/rung gọi ở đây để UI chỉ việc báo nhấn/nhả. Cờ editor (password/email/số) tắt Telex.
+ * Sự kiện phím (down/up theo SPEC §3.2): down phát âm/rung + backspace xóa ngay;
+ * up trong biên mới thực hiện phím. Giữ engine Telex thuần và pipeline composing;
+ * âm/rung gọi ở đây để UI chỉ việc báo down/up/cancel.
  */
 class KeyboardController(
     private val ime: InputMethodService,
@@ -26,21 +31,72 @@ class KeyboardController(
     private val commitProcessor: CommitProcessor = CommitProcessor.Identity,
 ) {
     private val telex = TelexEngine()
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+    private val repeater = BackspaceRepeater(
+        onDelete = { backspaceOnce() },
+        onTick = {
+            val p = prefs.state.value
+            sound.playPress(p.soundEnabled, p.soundVolume * 0.7f)
+            haptics.press(p.hapticsEnabled, p.hapticStrength)
+        },
+    )
     private var telexActive = true
 
     private val ic get() = ime.currentInputConnection
+    private fun editor(): TextEditor = TextEditor(ic)
 
-    /** UI gọi khi chạm xuống: phản hồi tức thì rồi thực hiện phím. */
-    fun keyPressed(key: Key) {
+    /** NeoKey down: phản hồi tức thì; backspace xóa một đơn vị ngay. */
+    fun keyDown(key: Key) {
         val p = prefs.state.value
         sound.playPress(p.soundEnabled, p.soundVolume)
         haptics.press(p.hapticsEnabled, p.hapticStrength)
+        if (key.special == Special.BACKSPACE) backspaceOnce()
+    }
+
+    /** NeoKey up: phím thường chỉ thực hiện khi trong biên và chưa cancel. */
+    fun keyUp(key: Key, inside: Boolean) {
+        val p = prefs.state.value
+        sound.playRelease(p.soundEnabled, p.soundVolume)
+        if (key.special == Special.BACKSPACE) {
+            repeater.stop()
+            return
+        }
+        if (!inside) return
         handleKey(key, p)
     }
 
-    /** UI gọi khi nhả: chỉ âm release. */
+    fun keyCancel(key: Key) {
+        val p = prefs.state.value
+        sound.playRelease(p.soundEnabled, p.soundVolume)
+        repeater.stop()
+    }
+
+    /** NeoKey báo long-press: bắt đầu lặp xóa (đã xóa 1 lần lúc down). */
+    fun backspaceRepeatStart() {
+        repeater.start(scope)
+    }
+
+    /** Vuốt trái trên backspace: hộp repeater, xóa từ một lần. */
+    fun backspaceWordDelete() {
+        repeater.stop()
+        if (!telex.isEmpty) {
+            ic?.commitText("", 1)
+            resetWord()
+        } else editor().deleteWord()
+        val p = prefs.state.value
+        sound.playPress(p.soundEnabled, p.soundVolume)
+        haptics.press(p.hapticsEnabled, p.hapticStrength)
+    }
+
+    /** Tương thích test cũ: coi như down+up trong biên. */
+    fun keyPressed(key: Key) {
+        keyDown(key)
+        keyUp(key, inside = true)
+    }
+
     fun keyReleased() {
         val p = prefs.state.value
+        repeater.stop()
         sound.playRelease(p.soundEnabled, p.soundVolume)
     }
 
@@ -48,21 +104,29 @@ class KeyboardController(
     fun pickCandidate(word: String) {
         ic?.commitText("$word ", 1)
         resetWord()
+        ui.candidates = suggestions.onSpace()
     }
 
     private fun handleKey(key: Key, p: KeyboardPrefs) {
         when (key.special) {
             Special.SHIFT -> { ui.shiftMode = nextShift(ui.shiftMode); return }
-            Special.BACKSPACE -> { backspace(); return }
+            Special.BACKSPACE -> { repeater.stop(); return }
             Special.ENTER -> { enter(); return }
             Special.SPACE -> {
                 commitComposing()
                 ic?.commitText(" ", 1)
                 resetShiftOnce()
+                ui.candidates = suggestions.onSpace()
                 return
             }
             Special.TO_SYMBOLS -> { commitComposing(); ui.page = KeyboardPage.SYMBOLS; return }
             Special.TO_LETTERS -> { commitComposing(); ui.page = KeyboardPage.LETTERS; return }
+            Special.EMOJI -> {
+                commitComposing()
+                ic?.commitText("😊", 1)
+                resetShiftOnce()
+                return
+            }
             Special.NONE -> {}
         }
         if (key.isSpacer) return
@@ -82,19 +146,26 @@ class KeyboardController(
         }
     }
 
-    private fun backspace() {
+    /** Một đơn vị xóa: selection > composing (Telex) > grapheme (SPEC §8.2). */
+    private fun backspaceOnce() {
+        if (editor().hasSelection()) {
+            editor().deleteSelection()
+            resetWord()
+            return
+        }
         if (!telex.isEmpty) {
             val composed = telex.backspace()
             if (composed.isEmpty()) {
-                ic?.commitText("", 1)
-                ui.composing = ""
+                ic?.setComposingText("", 1)
+                ic?.finishComposingText()
+                resetWord()
             } else {
                 ic?.setComposingText(composed, 1)
                 ui.composing = composed
+                ui.candidates = suggestions.onComposingChanged(composed)
             }
-            ui.candidates = suggestions.onComposingChanged(composed)
         } else {
-            ic?.deleteSurroundingText(1, 0)
+            editor().deleteGrapheme()
         }
     }
 
@@ -114,7 +185,7 @@ class KeyboardController(
     /** Commit từ đang composing (qua autocorrect seam) rồi báo hook học. */
     private fun commitComposing() {
         val composed = telex.composing
-        if (composed.isNotEmpty()) {
+        if (composed.isNotEmpty() && !ui.passwordField) {
             val final = commitProcessor.process(composed)
             ic?.commitText(final, 1)
             suggestions.onWordCommitted(final)
@@ -161,7 +232,13 @@ class KeyboardController(
     }
 
     fun onFinishInput() {
+        repeater.stop()
         commitComposing()
+    }
+
+    fun close() {
+        repeater.stop()
+        scope.cancel()
     }
 
     private fun isPassword(clazz: Int, variation: Int): Boolean =

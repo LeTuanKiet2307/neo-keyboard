@@ -1,12 +1,19 @@
 package app.neokeyboard.suggest
 
 /**
- * Mối nối Giai đoạn 2: engine gợi ý/đoán từ tiếng Việt có học. MVP dùng [NoOpSuggestions]
- * (luôn rỗng) nên dải candidate ẩn. Controller vẫn gọi đều để GĐ2 chỉ thay implementation.
+ * Engine gợi ý tiếng Việt (SPEC §5.3): completion theo composing + next-word sau space.
+ * MVP dùng [NoOpSuggestions] (luôn rỗng); M2 thay bằng LexiconSuggestionEngine.
  */
 interface SuggestionEngine {
     /** Chuỗi đang composing đổi → trả danh sách gợi ý (MVP: rỗng). */
     fun onComposingChanged(composing: String): List<String>
+
+    /** Chuỗi đang composing đổi (chuẩn SPEC §5.3). */
+    fun onComposingChanged(composing: String, limit: Int): List<String> =
+        onComposingChanged(composing).take(limit)
+
+    /** Vừa chèn khoảng trắng → gợi ý từ tiếp theo (MVP: rỗng). */
+    fun onSpace(limit: Int = 4): List<String> = emptyList()
 
     /** Một từ vừa commit → hook để học/ghi nhớ (MVP: không làm gì). */
     fun onWordCommitted(word: String)

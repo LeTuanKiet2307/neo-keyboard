@@ -26,7 +26,9 @@ import androidx.core.graphics.withSave
 fun Modifier.zeroContactShadow(
     shape: Shape = RoundedCornerShape(ZeroRadius.Row),
     rasterize: Boolean = true,
-): Modifier = cachedZeroShadow(shape, ZeroSize.ContactBlur, 0.dp, 0.dp, remember(rasterize) { ShadowRaster(rasterize) })
+    blur: Dp = ZeroSize.KeyShadowBlur,
+    alpha: Float = ZeroAlpha.KeyShadow,
+): Modifier = cachedZeroShadow(shape, blur, 0.dp, 0.dp, remember(rasterize, alpha) { ShadowRaster(rasterize) }, alpha)
 
 internal class ShadowRaster(val enabled: Boolean) {
     var builtAtNanos = Long.MIN_VALUE
@@ -34,7 +36,7 @@ internal class ShadowRaster(val enabled: Boolean) {
 
 internal const val SHADOW_SETTLED_NANOS = 250_000_000L
 
-private fun Modifier.cachedZeroShadow(shape: Shape, blur: Dp, offset: Dp, spread: Dp, raster: ShadowRaster): Modifier =
+private fun Modifier.cachedZeroShadow(shape: Shape, blur: Dp, offset: Dp, spread: Dp, raster: ShadowRaster, alpha: Float = ZeroAlpha.KeyShadow): Modifier =
     drawWithCache {
         val outline = shape.createOutline(size, layoutDirection, this)
         val path = when (outline) {
@@ -46,7 +48,7 @@ private fun Modifier.cachedZeroShadow(shape: Shape, blur: Dp, offset: Dp, spread
             color = android.graphics.Color.BLACK
             setShadowLayer(
                 blur.toPx(), 0f, offset.toPx(),
-                android.graphics.Color.argb((ZeroAlpha.ContactShadow * 255).toInt(), 0, 0, 0),
+                android.graphics.Color.argb((alpha * 255).toInt(), 0, 0, 0),
             )
         }
         val spreadPx = spread.toPx()

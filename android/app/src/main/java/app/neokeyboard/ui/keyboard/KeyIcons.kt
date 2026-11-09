@@ -13,7 +13,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 
 /** Icon phím chức năng vẽ bằng Canvas để khỏi kéo thư viện icon. Toạ độ chuẩn trong ô 24. */
-enum class KeyGlyph { SHIFT, SHIFT_LOCK, BACKSPACE, ENTER }
+enum class KeyGlyph { SHIFT, SHIFT_LOCK, BACKSPACE, ENTER, CLIPBOARD }
 
 @Composable
 fun KeyIcon(glyph: KeyGlyph, tint: Color, modifier: Modifier = Modifier) {
@@ -59,6 +59,12 @@ private fun DrawScope.drawGlyph(glyph: KeyGlyph, tint: Color) {
                 moveTo(10f, 8f); lineTo(5f, 13f); lineTo(10f, 18f)
             }
             drawPath(head, tint, style = stroke)
+        }
+        KeyGlyph.CLIPBOARD -> {
+            drawRoundRect(tint, topLeft = Offset(5f, 4f), size = androidx.compose.ui.geometry.Size(14f, 16f), style = stroke)
+            drawRoundRect(tint, topLeft = Offset(9f, 2f), size = androidx.compose.ui.geometry.Size(6f, 4f), style = Fill)
+            drawLine(tint, Offset(8f, 10f), Offset(16f, 10f), strokeWidth = 1.6f)
+            drawLine(tint, Offset(8f, 14f), Offset(14f, 14f), strokeWidth = 1.6f)
         }
     }
 }

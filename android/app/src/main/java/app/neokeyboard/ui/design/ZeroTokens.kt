@@ -169,6 +169,23 @@ object ZeroSize {
     /** Overlay panels sit 12 inside the screen and never fill it. */
     val OverlayInset: Dp = 20.dp
     const val OverlayHeightFraction: Float = 0.72f
+
+    /** G-board parity (ảnh đo 720x1612, density 1.8): phím ~30.8dp rộng, cao ~44dp. */
+    val KeyHeightPortrait: Dp = 44.dp
+    val KeyHeightLandscape: Dp = 40.dp
+    /** Gap ngang giữa phím đo ~7.5dp → 8dp; gap dọc đo ~8.3dp → 8dp. */
+    val KeyGap: Dp = 8.dp
+    /** Lề ngang đo ~10.8dp → 12dp (Gutter). */
+    val KeySideMargin: Dp = 12.dp
+    /** Thành bên keycap 3D (SPEC: 4→1dp, travel 3dp). */
+    val KeyWall: Dp = 4.dp
+    val KeyWallPressed: Dp = 1.dp
+    val KeyTravel: Dp = 3.dp
+    val KeyShadowBlur: Dp = 4.dp
+    val KeyShadowOffset: Dp = 2.dp
+    val SuggestionHeight: Dp = 48.dp
+    val SuggestionHeightLandscape: Dp = 40.dp
+    val ClipboardRow: Dp = 56.dp
 }
 
 /** Spatial moves overshoot; effects never do. */
@@ -182,6 +199,7 @@ object ZeroDuration {
     const val EffectsSlow: Int = 300
 
     const val Press: Int = 200
+    const val KeyTravel: Int = 90
     const val IconFill: Int = 200
     const val Ripple: Int = 600
     const val ReducedFade: Int = 150
@@ -245,6 +263,8 @@ object ZeroAlpha {
     /** The one drop shadow in the grammar: a soft contact shadow, never stacked. */
     const val Shadow: Float = 0.28f
     const val ContactShadow: Float = 0.7f
+    /** Bóng keycap G-board: nhẹ hơn SPEC 0.22 vì G-board gần như phẳng. */
+    const val KeyShadow: Float = 0.12f
     const val Feather: Float = 0.20f
 
     /** The toast's 1 dp semantic border: the only border in the grammar. */

@@ -1,7 +1,7 @@
 package app.neokeyboard.ime
 
 /** Phím chức năng; NONE = phím văn bản thường (chữ/số/dấu câu). */
-enum class Special { NONE, SHIFT, BACKSPACE, ENTER, SPACE, TO_SYMBOLS, TO_LETTERS }
+enum class Special { NONE, SHIFT, BACKSPACE, ENTER, SPACE, TO_SYMBOLS, TO_LETTERS, EMOJI }
 
 /**
  * Một phím. [text] là ký tự gốc (chữ thường) nạp vào engine; phím chức năng để text rỗng.

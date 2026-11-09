@@ -94,9 +94,12 @@ class NeoImeService : InputMethodService(),
                     KeyboardScreen(
                         ui = uiState,
                         prefs = prefs,
-                        onPress = controller::keyPressed,
-                        onRelease = controller::keyReleased,
+                        onKeyDown = controller::keyDown,
+                        onKeyUp = controller::keyUp,
                         onPickCandidate = controller::pickCandidate,
+                        onKeyCancel = controller::keyCancel,
+                        onBackspaceRepeatStart = controller::backspaceRepeatStart,
+                        onBackspaceWordDelete = controller::backspaceWordDelete,
                     )
                 }
             }
@@ -158,6 +161,7 @@ class NeoImeService : InputMethodService(),
         vmStore.clear()
         runCatching { unregisterReceiver(wallpaperReceiver) }
         if (::sound.isInitialized) sound.release()
+        if (::controller.isInitialized) controller.close()
         if (::settings.isInitialized) settings.close()
         super.onDestroy()
     }

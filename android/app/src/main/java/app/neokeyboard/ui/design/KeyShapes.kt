@@ -5,8 +5,8 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.unit.Dp
 
 /**
- * idle 16 / checked 12 / pressed 8 — nhấn thì bóp góc, không đổi kích thước.
- * Trích từ ZeroShape của System Zero ( chỉ phần cần cho phím).
+ * G-board parity: đo ~5.6dp. idle Pressed (8) / checked Field (12) / pressed Seam (4).
+ * Nhấn thì bóp góc, không đổi kích thước.
  */
 @Composable
 fun zeroPressRadius(
@@ -15,9 +15,9 @@ fun zeroPressRadius(
     motion: ZeroMotion = LocalZeroMotion.current,
 ): Dp = animateDpAsState(
     targetValue = when {
-        pressed -> ZeroRadius.Pressed
+        pressed -> ZeroRadius.Seam
         checked -> ZeroRadius.Field
-        else -> ZeroRadius.Row
+        else -> ZeroRadius.Pressed
     },
     animationSpec = motion.effects(ZeroDuration.Press),
     label = "zero-press-radius",
