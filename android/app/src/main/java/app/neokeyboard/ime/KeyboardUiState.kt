@@ -21,6 +21,7 @@ class KeyboardUiState {
     var composing by mutableStateOf("")
     var candidates by mutableStateOf<List<String>>(emptyList())
     var passwordField by mutableStateOf(false)
+    var clipboardOpen by mutableStateOf(false)
 
     /** Tăng để ép NeoTheme đọc lại dynamic scheme khi màu hệ thống/ảnh nền đổi. */
     var paletteRevision by mutableIntStateOf(0)

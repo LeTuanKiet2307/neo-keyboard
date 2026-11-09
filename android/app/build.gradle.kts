@@ -1,4 +1,5 @@
 import org.jetbrains.kotlin.gradle.dsl.JvmTarget
+import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -14,8 +15,12 @@ android {
         applicationId = "app.neokeyboard"
         minSdk = 29
         targetSdk = 35
-        versionCode = 1
-        versionName = "0.1.0"
+        versionCode = 2
+        versionName = "0.2.0"
+    }
+
+    androidResources {
+        noCompress += "ogg"
     }
 
     buildTypes {
@@ -23,7 +28,22 @@ android {
             isMinifyEnabled = true
             isShrinkResources = true
             proguardFiles(getDefaultProguardFile("proguard-android-optimize.txt"), "proguard-rules.pro")
-            signingConfig = signingConfigs.getByName("debug")
+            val keystore = rootProject.file("keystore.properties")
+            if (keystore.exists()) {
+                val props = Properties().apply { keystore.inputStream().use { load(it) } }
+                signingConfigs {
+                    create("release") {
+                        storeFile = file(props.getProperty("storeFile", "")!!)
+                        storePassword = props.getProperty("storePassword")
+                        keyAlias = props.getProperty("keyAlias")
+                        keyPassword = props.getProperty("keyPassword")
+                    }
+                }
+                signingConfig = signingConfigs.getByName("release")
+            } else {
+                // Chưa có keystore: release ký debug để build tra cứu, không phát hành.
+                signingConfig = signingConfigs.getByName("debug")
+            }
         }
     }
 

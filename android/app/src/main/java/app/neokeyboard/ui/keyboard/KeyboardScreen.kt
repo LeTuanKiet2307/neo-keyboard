@@ -20,7 +20,6 @@ import app.neokeyboard.ime.Key
 import app.neokeyboard.ime.KeyboardUiState
 import app.neokeyboard.ui.design.ZeroSize
 import app.neokeyboard.ui.keyboard.layouts.KeyLayouts
-
 /**
  * Mặt bàn phím G-board parity: dải gợi ý trên cùng + các hàng phím.
  * Số đo từ ảnh G-board trên vivo Y22s (720x1612, density 1.8): phím ~30.8dp rộng,
@@ -37,6 +36,10 @@ fun KeyboardScreen(
     onBackspaceRepeatStart: () -> Unit = {},
     onBackspaceWordDelete: () -> Unit = {},
     onClipboard: () -> Unit = {},
+    onPasteClip: (String) -> Unit = {},
+    onCloseClipboard: () -> Unit = {},
+    onPasteSystem: () -> Unit = {},
+    clipboardPanel: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
     val landscape = LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
@@ -57,13 +60,17 @@ fun KeyboardScreen(
             .testTag("keyboard"),
         verticalArrangement = Arrangement.spacedBy(ZeroSize.KeyGap),
     ) {
-        if (!ui.passwordField) {
+        if (!ui.passwordField && !ui.clipboardOpen) {
             CandidateStrip(
                 ui.candidates,
                 onPickCandidate,
                 onClipboard = onClipboard,
                 landscape = landscape,
             )
+        }
+        if (ui.clipboardOpen && clipboardPanel != null) {
+            clipboardPanel()
+            return@Column
         }
         rows.forEach { row ->
             Row(

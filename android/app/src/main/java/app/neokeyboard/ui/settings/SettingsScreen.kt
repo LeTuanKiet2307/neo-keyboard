@@ -68,6 +68,8 @@ fun SettingsScreen(
             SoundSection(prefs, settings)
             HapticsSection(prefs, settings)
             InputSection(prefs, settings)
+            SuggestionsSection(prefs, settings)
+            ClipboardSection(prefs, settings)
         }
     }
 }
@@ -84,11 +86,19 @@ private fun AppearanceSection(prefs: KeyboardPrefs, settings: KeyboardSettings) 
                 onSelect = { settings.setMode(AppearanceMode.entries[it]) },
             )
             FieldLabel("Nguồn màu")
+            val sources = listOf(ColorSource.SYSTEM_ZERO, ColorSource.SYSTEM, ColorSource.CUSTOM)
             ChipRow(
-                options = listOf("Hệ thống", "Tuỳ chỉnh"),
-                selectedIndex = if (prefs.colorSource == ColorSource.SYSTEM) 0 else 1,
-                onSelect = { settings.setColorSource(if (it == 0) ColorSource.SYSTEM else ColorSource.CUSTOM) },
+                options = listOf("System Zero", "Hệ thống", "Tuỳ chỉnh"),
+                selectedIndex = sources.indexOf(prefs.colorSource).coerceIn(0, sources.lastIndex),
+                onSelect = { settings.setColorSource(sources[it]) },
             )
+            if (prefs.colorSource == ColorSource.SYSTEM_ZERO) {
+                Text(
+                    "Theo System Zero: mở bàn phím để đồng bộ. Không thấy System Zero thì dùng màu hệ thống.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             if (prefs.colorSource == ColorSource.CUSTOM) {
                 FieldLabel("Màu chủ đạo")
                 SeedSwatches(prefs.customSeed) { settings.setCustomSeed(it) }
@@ -111,10 +121,15 @@ private fun SoundSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
     SectionCard {
         Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
             SectionTitle("Âm thanh")
-            SwitchRow("Âm phím cream", prefs.soundEnabled) { settings.setSoundEnabled(it) }
+            SwitchRow("Âm phím", prefs.soundEnabled) { settings.setSoundEnabled(it) }
             if (prefs.soundEnabled) {
                 FieldLabel("Âm lượng")
                 Slider(value = prefs.soundVolume, onValueChange = { settings.setSoundVolume(it) })
+                Text(
+                    "Bộ âm thu thật (pack) đang chờ giấy phép; hiện dùng tạm pack cream.",
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
             }
         }
     }
@@ -145,6 +160,29 @@ private fun InputSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
             SectionTitle("Gõ tiếng Việt")
             SwitchRow("Telex", prefs.telexEnabled) { settings.setTelexEnabled(it) }
             SwitchRow("Popup xem trước phím", prefs.popupEnabled) { settings.setPopupEnabled(it) }
+            SwitchRow("Tự viết hoa đầu câu", prefs.autoCap) { settings.setAutoCap(it) }
+            SwitchRow("Hai lần space = dấu chấm", prefs.doubleSpacePeriod) { settings.setDoubleSpacePeriod(it) }
+        }
+    }
+}
+
+@Composable
+private fun SuggestionsSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
+    SectionCard {
+        Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
+            SectionTitle("Gợi ý")
+            SwitchRow("Gợi ý từ", prefs.suggestionsEnabled) { settings.setSuggestionsEnabled(it) }
+            SwitchRow("Học từ đã gõ", prefs.learnWords) { settings.setLearnWords(it) }
+        }
+    }
+}
+
+@Composable
+private fun ClipboardSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
+    SectionCard {
+        Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
+            SectionTitle("Bộ nhớ tạm")
+            SwitchRow("Bật", prefs.clipboardEnabled) { settings.setClipboardEnabled(it) }
         }
     }
 }

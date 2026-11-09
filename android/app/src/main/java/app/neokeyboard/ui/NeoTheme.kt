@@ -24,8 +24,8 @@ import app.neokeyboard.ui.design.ZeroTypography
 import app.neokeyboard.ui.design.rememberZeroIndication
 import app.neokeyboard.ui.design.rememberZeroMotion
 
-/** Nguồn màu: SYSTEM = Material You (API 31+), CUSTOM = seed riêng qua ZeroPalette. */
-enum class ColorSource { SYSTEM, CUSTOM }
+/** Nguồn màu: SYSTEM_ZERO = System Zero bridge, SYSTEM = Material You, CUSTOM = seed riêng. */
+enum class ColorSource { SYSTEM_ZERO, SYSTEM, CUSTOM }
 
 /**
  * Biên giới theme của bàn phím: một bảng màu (Material You hoặc ZeroPalette), một type ramp,
@@ -35,23 +35,30 @@ enum class ColorSource { SYSTEM, CUSTOM }
 @Composable
 fun NeoTheme(
     mode: AppearanceMode = AppearanceMode.SYSTEM,
-    colorSource: ColorSource = ColorSource.SYSTEM,
+    colorSource: ColorSource = ColorSource.SYSTEM_ZERO,
     seed: Int = ZeroPalette.DefaultSeed,
     paletteRevision: Int = 0,
     motionEnabled: Boolean = true,
+    systemZero: app.neokeyboard.theme.ThemeSnapshot? = null,
     content: @Composable () -> Unit,
 ) {
     val context = LocalContext.current
-    val dark = when (mode) {
-        AppearanceMode.SYSTEM -> isSystemInDarkTheme()
-        AppearanceMode.LIGHT -> false
-        AppearanceMode.DARK -> true
+    val systemDark = isSystemInDarkTheme()
+    val dark = if (colorSource == ColorSource.SYSTEM_ZERO && systemZero != null) {
+        systemZero.effectiveDark(systemDark)
+    } else {
+        when (mode) {
+            AppearanceMode.SYSTEM -> systemDark
+            AppearanceMode.LIGHT -> false
+            AppearanceMode.DARK -> true
+        }
     }
-    val scheme = remember(dark, colorSource, seed, paletteRevision, context) {
-        if (colorSource == ColorSource.SYSTEM && Build.VERSION.SDK_INT >= 31) {
-            if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
-        } else {
-            ZeroPalette.scheme(seed, dark)
+    val scheme = remember(dark, colorSource, seed, paletteRevision, systemZero?.revision, context) {
+        when {
+            colorSource == ColorSource.SYSTEM_ZERO && systemZero != null -> systemZero.scheme(dark)
+            colorSource == ColorSource.SYSTEM && Build.VERSION.SDK_INT >= 31 ->
+                if (dark) dynamicDarkColorScheme(context) else dynamicLightColorScheme(context)
+            else -> ZeroPalette.scheme(seed, dark)
         }
     }
     val extras = remember(dark) { ZeroPalette.extras(dark) }

@@ -12,6 +12,8 @@ import android.view.View
 import android.view.inputmethod.EditorInfo
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.platform.ViewCompositionStrategy
 import androidx.core.content.ContextCompat
@@ -28,7 +30,10 @@ import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import app.neokeyboard.data.KeyboardSettings
 import app.neokeyboard.haptics.KeyHaptics
-import app.neokeyboard.sound.CreamSoundPlayer
+import app.neokeyboard.sound.KeySoundPlayer
+import app.neokeyboard.suggest.BundledLexicon
+import app.neokeyboard.suggest.LexiconSuggestionEngine
+import app.neokeyboard.suggest.UserLexiconStore
 import app.neokeyboard.ui.NeoTheme
 import app.neokeyboard.ui.keyboard.KeyboardScreen
 
@@ -51,9 +56,11 @@ class NeoImeService : InputMethodService(),
 
     private lateinit var uiState: KeyboardUiState
     private lateinit var settings: KeyboardSettings
-    private lateinit var sound: CreamSoundPlayer
+    private lateinit var sound: KeySoundPlayer
     private lateinit var haptics: KeyHaptics
     private lateinit var controller: KeyboardController
+    private lateinit var clipboardRepo: app.neokeyboard.clipboard.ClipboardRepository
+    private var themeSnapshot by mutableStateOf<app.neokeyboard.theme.ThemeSnapshot?>(null)
     private var inputComposeView: ComposeView? = null
 
     private val wallpaperReceiver = object : BroadcastReceiver() {
@@ -69,9 +76,15 @@ class NeoImeService : InputMethodService(),
 
         uiState = KeyboardUiState()
         settings = KeyboardSettings(this)
-        sound = CreamSoundPlayer(this)
+        sound = KeySoundPlayer(this)
         haptics = KeyHaptics(this)
-        controller = KeyboardController(this, uiState, settings, sound, haptics)
+        val store = runCatching { UserLexiconStore(this) }.getOrNull()
+        val engine = LexiconSuggestionEngine(BundledLexicon.starter(), store) { settings.state.value.learnWords }
+        clipboardRepo = runCatching { app.neokeyboard.clipboard.ClipboardRepository(this) }.getOrNull()
+            ?.also { it.purgeOlderThan(settings.state.value.clipboardDays) }
+            ?: app.neokeyboard.clipboard.ClipboardRepository(this)
+        controller = KeyboardController(this, uiState, settings, sound, haptics, engine, clipboardRepo = clipboardRepo)
+        refreshTheme()
 
         ContextCompat.registerReceiver(
             this, wallpaperReceiver, IntentFilter(Intent.ACTION_WALLPAPER_CHANGED),
@@ -90,6 +103,7 @@ class NeoImeService : InputMethodService(),
                     colorSource = prefs.colorSource,
                     seed = prefs.customSeed,
                     paletteRevision = uiState.paletteRevision,
+                    systemZero = themeSnapshot,
                 ) {
                     KeyboardScreen(
                         ui = uiState,
@@ -100,6 +114,18 @@ class NeoImeService : InputMethodService(),
                         onKeyCancel = controller::keyCancel,
                         onBackspaceRepeatStart = controller::backspaceRepeatStart,
                         onBackspaceWordDelete = controller::backspaceWordDelete,
+                        onClipboard = controller::openClipboard,
+                        onPasteClip = controller::pasteClip,
+                        onCloseClipboard = controller::closeClipboard,
+                        onPasteSystem = { controller.pasteFromSystem() },
+                        clipboardPanel = {
+                            app.neokeyboard.clipboard.ClipboardPanel(
+                                repo = clipboardRepo,
+                                onPaste = controller::pasteClip,
+                                onClose = controller::closeClipboard,
+                                onPasteSystem = { controller.pasteFromSystem() },
+                            )
+                        },
                     )
                 }
             }
@@ -128,6 +154,17 @@ class NeoImeService : InputMethodService(),
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
         super.onStartInputView(info, restarting)
         lifecycleRegistry.currentState = Lifecycle.State.RESUMED
+        refreshTheme()
+    }
+
+    private fun refreshTheme() {
+        val client = app.neokeyboard.theme.ThemeBridgeClient(this)
+        val fresh = try { client.loadSnapshot(this) } catch (_: Exception) { null }
+        if (fresh != null && fresh.revision > (themeSnapshot?.revision ?: Long.MIN_VALUE)) {
+            themeSnapshot = fresh
+        } else if (themeSnapshot == null) {
+            themeSnapshot = try { client.cacheRead(this) } catch (_: Exception) { null }
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {

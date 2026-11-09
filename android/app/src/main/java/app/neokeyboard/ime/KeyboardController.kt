@@ -6,7 +6,7 @@ import android.view.inputmethod.EditorInfo
 import app.neokeyboard.data.KeyboardPrefs
 import app.neokeyboard.data.KeyboardSettings
 import app.neokeyboard.haptics.KeyHaptics
-import app.neokeyboard.sound.CreamSoundPlayer
+import app.neokeyboard.sound.KeySoundPlayer
 import app.neokeyboard.suggest.CommitProcessor
 import app.neokeyboard.suggest.NoOpSuggestions
 import app.neokeyboard.suggest.SuggestionEngine
@@ -25,10 +25,11 @@ class KeyboardController(
     private val ime: InputMethodService,
     private val ui: KeyboardUiState,
     private val prefs: KeyboardSettings,
-    private val sound: CreamSoundPlayer,
+    private val sound: KeySoundPlayer,
     private val haptics: KeyHaptics,
     private val suggestions: SuggestionEngine = NoOpSuggestions,
     private val commitProcessor: CommitProcessor = CommitProcessor.Identity,
+    private val clipboardRepo: app.neokeyboard.clipboard.ClipboardRepository? = null,
 ) {
     private val telex = TelexEngine()
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
@@ -105,6 +106,47 @@ class KeyboardController(
         ic?.commitText("$word ", 1)
         resetWord()
         ui.candidates = suggestions.onSpace()
+    }
+
+    fun openClipboard() {
+        if (ui.passwordField || !prefs.state.value.clipboardEnabled) return
+        ic?.finishComposingText()
+        resetWord()
+        ui.clipboardOpen = true
+    }
+
+    fun closeClipboard() {
+        ui.clipboardOpen = false
+    }
+
+    fun pasteClip(text: String) {
+        if (text.isEmpty()) return
+        ic?.commitText(text, 1)
+        ui.clipboardOpen = false
+        resetWord()
+        val p = prefs.state.value
+        sound.playPress(p.soundEnabled, p.soundVolume)
+        haptics.press(p.hapticsEnabled, p.hapticStrength)
+    }
+
+    fun copySelection(): Boolean {
+        if (ui.passwordField) return false
+        val selected = try { ic?.getSelectedText(0)?.toString() } catch (_: Exception) { null }
+        if (selected.isNullOrEmpty()) return false
+        val cm = ime.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        cm?.setPrimaryClip(android.content.ClipData.newPlainText("Neo Keyboard", selected))
+        clipboardRepo?.add(selected)
+        return true
+    }
+
+    fun pasteFromSystem(): Boolean {
+        if (ui.passwordField) return false
+        val cm = ime.getSystemService(android.content.Context.CLIPBOARD_SERVICE) as? android.content.ClipboardManager
+        val text = cm?.primaryClip?.getItemAt(0)?.text?.toString()
+        if (text.isNullOrBlank()) return false
+        clipboardRepo?.clipboardFromSystemText(text)
+        pasteClip(text)
+        return true
     }
 
     private fun handleKey(key: Key, p: KeyboardPrefs) {
