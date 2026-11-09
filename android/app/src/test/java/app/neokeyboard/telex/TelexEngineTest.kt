@@ -102,4 +102,28 @@ class TelexEngineTest {
         assertEquals("", e.composing)
         assertEquals(true, e.isEmpty)
     }
+
+    @Test fun wAfterWholeSyllable() {
+        // Lỗi người dùng báo: "suarw" từng ra "sủă".
+        assertEquals("sửa", type("suarw"))
+        assertEquals("sửa", type("suawr"))
+        assertEquals("sửa", type("suwar"))
+        assertEquals("cửa", type("cuarw"))
+        assertEquals("mưa", type("muaw"))
+        assertEquals("người", type("nguoiwf"))
+        assertEquals("thương", type("thuongw"))
+        assertEquals("mười", type("muoiwf"))
+        assertEquals("gửi", type("guirw"))
+        assertEquals("cứu", type("cuuws"))
+        assertEquals("ơi", type("oiw"))
+        assertEquals("quăn", type("quanw"))
+        assertEquals("khăn", type("khanw"))
+        assertEquals("hoẵng", type("hoangwx"))
+        assertEquals("trường", type("truongwf"))
+    }
+
+    @Test fun wwUndoesTheRightVowel() {
+        assertEquals("suaw", type("suaww"))
+        assertEquals("nguoiw", type("nguoiww"))
+    }
 }

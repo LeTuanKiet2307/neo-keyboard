@@ -39,6 +39,7 @@ class TelexEngine {
         var tone = 0
         var prevFired = ""
         var prev = '\u0000'
+        var lastMarked: List<Int> = emptyList()
         for (idx in raw.indices) {
             val ch = raw[idx]
             val c = ch.lowercaseChar()
@@ -66,19 +67,14 @@ class TelexEngine {
                         if (prevFired == "wnew") {
                             if (letters.isNotEmpty()) letters.removeAt(letters.lastIndex)
                         } else {
-                            val vi = lastVowel(letters)
-                            if (vi >= 0) letters[vi].mark = 0
+                            lastMarked.forEach { letters[it].mark = 0 }
                         }
                         letters.add(L('w', up, 0)); prevFired = "escape"
                     }
                     else -> {
-                        val vi = lastVowel(letters)
-                        when {
-                            vi >= 0 && letters[vi].base == 'a' && letters[vi].mark == 0 -> { letters[vi].mark = TelexRules.BREVE; prevFired = "mark" }
-                            vi >= 0 && letters[vi].base == 'o' && letters[vi].mark == 0 -> { letters[vi].mark = TelexRules.HORN; prevFired = "mark" }
-                            vi >= 0 && letters[vi].base == 'u' && letters[vi].mark == 0 -> { letters[vi].mark = TelexRules.HORN; prevFired = "mark" }
-                            else -> { letters.add(L('u', up, TelexRules.HORN)); prevFired = "wnew" }
-                        }
+                        val marked = applyW(letters)
+                        if (marked.isNotEmpty()) { lastMarked = marked; prevFired = "mark" }
+                        else { letters.add(L('u', up, TelexRules.HORN)); prevFired = "wnew" }
                     }
                 }
                 c in "aeo" -> when {
@@ -108,6 +104,50 @@ class TelexEngine {
             prev = c
         }
         return render(letters, tone)
+    }
+
+    /**
+     * Phím w đặt dấu móc/trăng lên ĐÚNG nguyên âm của vần (kiểu UniKey), không phải nguyên âm cuối:
+     * 1. "uo" → "ươ" (mươi, thương, người)
+     * 2. "ua" mở, không thuộc qu- → "ưa" (sửa, cửa, mưa); có âm cuối hoặc qu- → "ă" (quăn, quặc)
+     * 3. a cuối vần → "ă" (hoẵng, khăn)
+     * 4. o/u đầu tiên của vần → "ơ"/"ư" (ơi, gửi, cứu)
+     * Trả về các chỉ số đã đánh dấu (để ww hoàn tác đúng chỗ), rỗng nếu không áp dụng được.
+     */
+    private fun applyW(letters: List<L>): List<Int> {
+        val nuc = nucleus(letters)
+        if (nuc.isEmpty()) return emptyList()
+        fun b(i: Int) = letters[i].base
+        fun free(i: Int) = letters[i].mark == 0
+        val hasCoda = nuc.last() < letters.lastIndex
+        for (k in 0 until nuc.size - 1) {
+            val u = nuc[k]; val o = nuc[k + 1]
+            if (b(u) == 'u' && b(o) == 'o' && (free(u) || free(o)) &&
+                letters[u].mark in intArrayOf(0, TelexRules.HORN) && letters[o].mark in intArrayOf(0, TelexRules.HORN)
+            ) {
+                val changed = listOf(u, o).filter { free(it) }
+                changed.forEach { letters[it].mark = TelexRules.HORN }
+                return changed
+            }
+        }
+        if (nuc.size >= 2 && b(nuc[0]) == 'u' && b(nuc[1]) == 'a' && !hasCoda && free(nuc[0]) && free(nuc[1])) {
+            letters[nuc[0]].mark = TelexRules.HORN
+            return listOf(nuc[0])
+        }
+        val last = nuc.last()
+        if (b(last) == 'a' && free(last)) {
+            letters[last].mark = TelexRules.BREVE
+            return listOf(last)
+        }
+        nuc.firstOrNull { (b(it) == 'o' || b(it) == 'u') && free(it) }?.let {
+            letters[it].mark = TelexRules.HORN
+            return listOf(it)
+        }
+        nuc.lastOrNull { b(it) == 'a' && free(it) }?.let {
+            letters[it].mark = TelexRules.BREVE
+            return listOf(it)
+        }
+        return emptyList()
     }
 
     private fun lastVowel(letters: List<L>): Int {
