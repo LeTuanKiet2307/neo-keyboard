@@ -30,6 +30,8 @@ data class KeyboardPrefs(
     val clipboardDays: Int = 30,
     val autoCap: Boolean = true,
     val doubleSpacePeriod: Boolean = true,
+    /** false (mặc định): gõ thẳng, không gạch chân từ đang gõ. true: composing chuẩn của Android. */
+    val composingUnderline: Boolean = false,
 )
 
 /**
@@ -66,6 +68,7 @@ class KeyboardSettings(context: Context) {
     fun setClipboardDays(value: Int) = prefs.edit().putInt(KEY_CLIPBOARD_DAYS, value).apply()
     fun setAutoCap(value: Boolean) = prefs.edit().putBoolean(KEY_AUTO_CAP, value).apply()
     fun setDoubleSpacePeriod(value: Boolean) = prefs.edit().putBoolean(KEY_DOUBLE_SPACE, value).apply()
+    fun setComposingUnderline(value: Boolean) = prefs.edit().putBoolean(KEY_UNDERLINE, value).apply()
 
     private fun read() = KeyboardPrefs(
         mode = parseEnum(prefs.getString(KEY_MODE, null), AppearanceMode.SYSTEM),
@@ -85,6 +88,7 @@ class KeyboardSettings(context: Context) {
         clipboardDays = prefs.getInt(KEY_CLIPBOARD_DAYS, 30),
         autoCap = prefs.getBoolean(KEY_AUTO_CAP, true),
         doubleSpacePeriod = prefs.getBoolean(KEY_DOUBLE_SPACE, true),
+        composingUnderline = prefs.getBoolean(KEY_UNDERLINE, false),
     )
 
     private inline fun <reified T : Enum<T>> parseEnum(raw: String?, default: T): T =
@@ -109,5 +113,6 @@ class KeyboardSettings(context: Context) {
         const val KEY_CLIPBOARD_DAYS = "clipboard_days"
         const val KEY_AUTO_CAP = "auto_cap"
         const val KEY_DOUBLE_SPACE = "double_space_period"
+        const val KEY_UNDERLINE = "composing_underline"
     }
 }

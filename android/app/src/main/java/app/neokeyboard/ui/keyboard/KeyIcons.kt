@@ -13,7 +13,7 @@ import androidx.compose.ui.graphics.drawscope.scale
 import androidx.compose.ui.graphics.drawscope.translate
 
 /** Icon phím chức năng vẽ bằng Canvas để khỏi kéo thư viện icon. Toạ độ chuẩn trong ô 24. */
-enum class KeyGlyph { SHIFT, SHIFT_LOCK, BACKSPACE, ENTER, CLIPBOARD }
+enum class KeyGlyph { SHIFT, SHIFT_LOCK, BACKSPACE, ENTER, CLIPBOARD, BOLT, SETTINGS, LOCK, CLOSE }
 
 @Composable
 fun KeyIcon(glyph: KeyGlyph, tint: Color, modifier: Modifier = Modifier) {
@@ -65,6 +65,42 @@ private fun DrawScope.drawGlyph(glyph: KeyGlyph, tint: Color) {
             drawRoundRect(tint, topLeft = Offset(9f, 2f), size = androidx.compose.ui.geometry.Size(6f, 4f), style = Fill)
             drawLine(tint, Offset(8f, 10f), Offset(16f, 10f), strokeWidth = 1.6f)
             drawLine(tint, Offset(8f, 14f), Offset(14f, 14f), strokeWidth = 1.6f)
+        }
+        KeyGlyph.BOLT -> {
+            val bolt = Path().apply {
+                moveTo(13.5f, 2f); lineTo(5f, 13.5f); lineTo(11f, 13.5f)
+                lineTo(10f, 22f); lineTo(19f, 10f); lineTo(13f, 10f); close()
+            }
+            drawPath(bolt, tint, style = Fill)
+        }
+        KeyGlyph.SETTINGS -> {
+            val c = Offset(12f, 12f)
+            for (i in 0 until 8) {
+                val a = Math.toRadians(i * 45.0)
+                val dx = kotlin.math.cos(a).toFloat()
+                val dy = kotlin.math.sin(a).toFloat()
+                drawLine(
+                    tint, Offset(12f + dx * 6.5f, 12f + dy * 6.5f), Offset(12f + dx * 9.5f, 12f + dy * 9.5f),
+                    strokeWidth = 3.2f, cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                )
+            }
+            drawCircle(tint, radius = 6.8f, center = c, style = Stroke(width = 2.4f))
+            drawCircle(tint, radius = 2.4f, center = c, style = Stroke(width = 2f))
+        }
+        KeyGlyph.LOCK -> {
+            drawRoundRect(
+                tint, topLeft = Offset(5f, 11f), size = androidx.compose.ui.geometry.Size(14f, 10f),
+                cornerRadius = androidx.compose.ui.geometry.CornerRadius(2f, 2f), style = Fill,
+            )
+            val shackle = Path().apply {
+                moveTo(8f, 11f); lineTo(8f, 8f)
+                cubicTo(8f, 3f, 16f, 3f, 16f, 8f); lineTo(16f, 11f)
+            }
+            drawPath(shackle, tint, style = stroke)
+        }
+        KeyGlyph.CLOSE -> {
+            drawLine(tint, Offset(6f, 6f), Offset(18f, 18f), strokeWidth = 2f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
+            drawLine(tint, Offset(18f, 6f), Offset(6f, 18f), strokeWidth = 2f, cap = androidx.compose.ui.graphics.StrokeCap.Round)
         }
     }
 }

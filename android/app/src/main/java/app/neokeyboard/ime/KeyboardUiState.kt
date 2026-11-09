@@ -23,8 +23,15 @@ class KeyboardUiState {
     var passwordField by mutableStateOf(false)
     var clipboardOpen by mutableStateOf(false)
 
+    /** Dải chọn trigger (giữ phím trigger) đang mở trên dải gợi ý. */
+    var triggerMenuOpen by mutableStateOf(false)
+    var triggerItems by mutableStateOf<List<TriggerChip>>(emptyList())
+
     /** Tăng để ép NeoTheme đọc lại dynamic scheme khi màu hệ thống/ảnh nền đổi. */
     var paletteRevision by mutableIntStateOf(0)
 
     val shifted: Boolean get() = shiftMode != ShiftMode.OFF
 }
+
+/** Mục hiển thị trong dải chọn trigger. Không mang giá trị — bí mật không bao giờ lên UI. */
+data class TriggerChip(val id: String, val label: String, val secret: Boolean, val active: Boolean)

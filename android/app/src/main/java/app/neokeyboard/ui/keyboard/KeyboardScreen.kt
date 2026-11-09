@@ -4,6 +4,7 @@ import android.content.res.Configuration
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -39,6 +40,11 @@ fun KeyboardScreen(
     onPasteClip: (String) -> Unit = {},
     onCloseClipboard: () -> Unit = {},
     onPasteSystem: () -> Unit = {},
+    onOpenSettings: () -> Unit = {},
+    onTriggerLongPress: () -> Unit = {},
+    onPickTrigger: (String) -> Unit = {},
+    onManageTriggers: () -> Unit = {},
+    onCloseTriggerMenu: () -> Unit = {},
     clipboardPanel: (@Composable () -> Unit)? = null,
     modifier: Modifier = Modifier,
 ) {
@@ -51,16 +57,18 @@ fun KeyboardScreen(
             .padding(
                 start = ZeroSize.KeySideMargin,
                 end = ZeroSize.KeySideMargin,
-                top = ZeroSize.KeyGap,
-                bottom = ZeroSize.KeySideMargin,
+                bottom = ZeroSize.KeyGapV,
             )
             .testTag("keyboard"),
-        verticalArrangement = Arrangement.spacedBy(ZeroSize.KeyGap),
     ) {
         CandidateHost(
             ui = ui,
             onPickCandidate = onPickCandidate,
             onClipboard = onClipboard,
+            onOpenSettings = onOpenSettings,
+            onPickTrigger = onPickTrigger,
+            onManageTriggers = onManageTriggers,
+            onCloseTriggerMenu = onCloseTriggerMenu,
             landscape = landscape,
         )
         if (ui.clipboardOpen && clipboardPanel != null) {
@@ -74,6 +82,7 @@ fun KeyboardScreen(
                 onKeyCancel = onKeyCancel,
                 onBackspaceRepeatStart = onBackspaceRepeatStart,
                 onBackspaceWordDelete = onBackspaceWordDelete,
+                onTriggerLongPress = onTriggerLongPress,
                 landscape = landscape,
             )
         }
@@ -85,14 +94,29 @@ private fun CandidateHost(
     ui: KeyboardUiState,
     onPickCandidate: (String) -> Unit,
     onClipboard: () -> Unit,
+    onOpenSettings: () -> Unit,
+    onPickTrigger: (String) -> Unit,
+    onManageTriggers: () -> Unit,
+    onCloseTriggerMenu: () -> Unit,
     landscape: Boolean,
 ) {
     // Chỉ composable này đọc candidates/password/clipboard: gõ chữ không recompose các phím.
-    if (!ui.passwordField && !ui.clipboardOpen) {
-        CandidateStrip(
-            ui.candidates,
+    // Ô mật khẩu vẫn giữ dải (không gợi ý, không clipboard) để còn nút ⚙ và bàn phím không nhảy.
+    when {
+        ui.clipboardOpen -> Unit
+        ui.triggerMenuOpen -> TriggerStrip(
+            items = ui.triggerItems,
+            onPick = onPickTrigger,
+            onManage = onManageTriggers,
+            onClose = onCloseTriggerMenu,
+            landscape = landscape,
+        )
+        else -> CandidateStrip(
+            if (ui.passwordField) emptyList() else ui.candidates,
             onPickCandidate,
             onClipboard = onClipboard,
+            onSettings = onOpenSettings,
+            showClipboard = !ui.passwordField,
             landscape = landscape,
         )
     }
@@ -107,18 +131,18 @@ private fun KeysHost(
     onKeyCancel: (Key) -> Unit,
     onBackspaceRepeatStart: () -> Unit,
     onBackspaceWordDelete: () -> Unit,
+    onTriggerLongPress: () -> Unit,
     landscape: Boolean,
 ) {
     // Chỉ đọc page (đổi trang mới recompose) + shifted đọc trong từng NeoKey.
-    val keyHeight = if (landscape) ZeroSize.KeyHeightLandscape else ZeroSize.KeyHeightPortrait
+    // Hàng không có khoảng cách: mỗi ô chạm phủ cả nửa khe hai bên, keycap tự lùi vào bằng inset.
+    val rowPitch = if (landscape) ZeroSize.KeyRowPitchLandscape else ZeroSize.KeyRowPitchPortrait
+    val inset = PaddingValues(horizontal = ZeroSize.KeyGapH / 2, vertical = ZeroSize.KeyGapV / 2)
     val rows = remember(ui.page) { KeyLayouts.rows(ui.page) }
     rows.forEach { row ->
-        Row(
-            Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(ZeroSize.KeyGap),
-        ) {
+        Row(Modifier.fillMaxWidth()) {
             row.forEach { key ->
-                val cell = Modifier.weight(key.weight).height(keyHeight)
+                val cell = Modifier.weight(key.weight).height(rowPitch)
                 if (key.isSpacer) {
                     Spacer(cell)
                 } else {
@@ -131,6 +155,8 @@ private fun KeysHost(
                         onKeyCancel = onKeyCancel,
                         onBackspaceRepeatStart = onBackspaceRepeatStart,
                         onBackspaceWordDelete = onBackspaceWordDelete,
+                        onTriggerLongPress = onTriggerLongPress,
+                        inset = inset,
                         modifier = cell,
                     )
                 }

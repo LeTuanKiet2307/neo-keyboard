@@ -1,5 +1,6 @@
 package app.neokeyboard.ui.settings
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -7,39 +8,51 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.ime
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.union
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
-import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Slider
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.ui.Alignment
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.unit.dp
 import app.neokeyboard.data.AppearanceMode
 import app.neokeyboard.data.HapticStrength
 import app.neokeyboard.data.KeyboardPrefs
 import app.neokeyboard.data.KeyboardSettings
+import app.neokeyboard.trigger.TriggerKind
 import app.neokeyboard.ui.ColorSource
-import app.neokeyboard.ui.design.ZeroRadius
 import app.neokeyboard.ui.design.ZeroSpace
 
-/** Màn cài đặt: cuộn dọc, mỗi nhóm một card. Đọc prefs từ StateFlow, ghi qua KeyboardSettings. */
+/** Trang trong màn cài đặt. Trang con mở bằng dòng "›", quay lại bằng nút ‹ hoặc Back. */
+enum class SettingsPage { MAIN, TRIGGER, ADVANCED }
+
+/**
+ * Màn cài đặt Neo Keyboard. Trang chính chỉ gồm các nhóm theo việc người dùng nghĩ tới
+ * (Gõ, Gợi ý, Nhập nhanh, Giao diện, Âm thanh & rung, Bộ nhớ tạm, Nâng cao); mục dài
+ * (danh sách nhập nhanh, công cụ debug) tách sang trang con để trang chính gọn.
+ */
 @Composable
 fun SettingsScreen(
     prefs: KeyboardPrefs,
@@ -48,183 +61,175 @@ fun SettingsScreen(
     imeSelected: Boolean,
     onOpenImeSettings: () -> Unit,
     onShowPicker: () -> Unit,
+    triggerState: app.neokeyboard.trigger.TriggerStore.State,
+    triggers: app.neokeyboard.trigger.TriggerStore,
+    focusSection: String? = null,
 ) {
-    Surface(color = MaterialTheme.colorScheme.surface) {
-        Column(
-            Modifier
-                .fillMaxSize()
-                .windowInsetsPadding(WindowInsets.systemBars)
-                .verticalScroll(rememberScrollState())
-                .padding(ZeroSpace.Pad),
-            verticalArrangement = Arrangement.spacedBy(ZeroSpace.Section),
-        ) {
-            Text(
-                "Neo Keyboard",
-                style = MaterialTheme.typography.headlineMedium,
-                color = MaterialTheme.colorScheme.onSurface,
-            )
-            SectionCard { EnableFlow(imeEnabled, imeSelected, onOpenImeSettings, onShowPicker) }
-            AppearanceSection(prefs, settings)
-            SoundSection(prefs, settings)
-            HapticsSection(prefs, settings)
-            InputSection(prefs, settings)
-            SuggestionsSection(prefs, settings)
-            ClipboardSection(prefs, settings)
-        }
+    var page by rememberSaveable { mutableStateOf(SettingsPage.MAIN) }
+    LaunchedEffect(focusSection) {
+        if (focusSection == SettingsActivity.SECTION_TRIGGER) page = SettingsPage.TRIGGER
     }
-}
+    BackHandler(enabled = page != SettingsPage.MAIN) { page = SettingsPage.MAIN }
 
-@Composable
-private fun AppearanceSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
-    SectionCard {
-        Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
-            SectionTitle("Giao diện")
-            FieldLabel("Chế độ sáng tối")
-            ChipRow(
-                options = AppearanceMode.entries.map { it.label },
-                selectedIndex = AppearanceMode.entries.indexOf(prefs.mode),
-                onSelect = { settings.setMode(AppearanceMode.entries[it]) },
-            )
-            FieldLabel("Nguồn màu")
-            val sources = listOf(ColorSource.SYSTEM_ZERO, ColorSource.SYSTEM, ColorSource.CUSTOM)
-            ChipRow(
-                options = listOf("System Zero", "Hệ thống", "Tuỳ chỉnh"),
-                selectedIndex = sources.indexOf(prefs.colorSource).coerceIn(0, sources.lastIndex),
-                onSelect = { settings.setColorSource(sources[it]) },
-            )
-            if (prefs.colorSource == ColorSource.SYSTEM_ZERO) {
-                Text(
-                    "Theo System Zero: mở bàn phím để đồng bộ. Không thấy System Zero thì dùng màu hệ thống.",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+    Surface(color = MaterialTheme.colorScheme.surface, modifier = Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().windowInsetsPadding(WindowInsets.systemBars.union(WindowInsets.ime))) {
+            when (page) {
+                SettingsPage.MAIN -> SettingsTopBar("Neo Keyboard")
+                SettingsPage.TRIGGER -> SettingsTopBar("Nhập nhanh") { page = SettingsPage.MAIN }
+                SettingsPage.ADVANCED -> SettingsTopBar("Nâng cao") { page = SettingsPage.MAIN }
             }
-            if (prefs.colorSource == ColorSource.CUSTOM) {
-                FieldLabel("Màu chủ đạo")
-                SeedSwatches(prefs.customSeed) { settings.setCustomSeed(it) }
-                val hsv = FloatArray(3)
-                android.graphics.Color.colorToHSV(prefs.customSeed, hsv)
-                Slider(
-                    value = hsv[0],
-                    onValueChange = { hue ->
-                        settings.setCustomSeed(android.graphics.Color.HSVToColor(floatArrayOf(hue, 0.55f, 0.75f)))
-                    },
-                    valueRange = 0f..360f,
-                )
+            Column(
+                Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = ZeroSpace.Pad)
+                    .padding(bottom = ZeroSpace.Panel),
+                verticalArrangement = Arrangement.spacedBy(ZeroSpace.Section),
+            ) {
+                when (page) {
+                    SettingsPage.MAIN -> MainPage(
+                        prefs, settings, imeEnabled, imeSelected, onOpenImeSettings, onShowPicker, triggerState,
+                        onOpen = { page = it },
+                    )
+                    SettingsPage.TRIGGER -> TriggerSection(triggerState, triggers)
+                    SettingsPage.ADVANCED -> AdvancedPage(prefs, settings)
+                }
             }
         }
     }
 }
 
 @Composable
-private fun SoundSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
-    SectionCard {
-        Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
-            SectionTitle("Âm thanh")
-            SwitchRow("Âm phím", prefs.soundEnabled) { settings.setSoundEnabled(it) }
-            if (prefs.soundEnabled) {
-                FieldLabel("Âm lượng")
-                Slider(value = prefs.soundVolume, onValueChange = { settings.setSoundVolume(it) })
-                Text(
-                    "Bộ âm thu thật (pack) đang chờ giấy phép; hiện dùng tạm pack cream.",
-                    style = MaterialTheme.typography.labelMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
-                )
+private fun MainPage(
+    prefs: KeyboardPrefs,
+    settings: KeyboardSettings,
+    imeEnabled: Boolean,
+    imeSelected: Boolean,
+    onOpenImeSettings: () -> Unit,
+    onShowPicker: () -> Unit,
+    triggerState: app.neokeyboard.trigger.TriggerStore.State,
+    onOpen: (SettingsPage) -> Unit,
+) {
+    when {
+        !imeEnabled -> StatusBanner(
+            "Chưa bật Neo Keyboard",
+            "Bật Neo Keyboard trong Cài đặt nhập liệu của hệ thống, rồi chọn nó làm bàn phím.",
+            attention = true,
+        ) { FilledTonalButton(onClick = onOpenImeSettings) { Text("Mở cài đặt nhập liệu") } }
+        !imeSelected -> StatusBanner(
+            "Chưa chọn Neo Keyboard",
+            "Đã bật nhưng bàn phím đang dùng là bàn phím khác.",
+            attention = true,
+        ) { FilledTonalButton(onClick = onShowPicker) { Text("Chọn bàn phím") } }
+        else -> SettingsGroup("Trạng thái") {
+            SettingsRow("Đang dùng Neo Keyboard", "Mở một ô nhập bất kỳ để gõ thử.") {
+                TextButton(onClick = onShowPicker) { Text("Đổi") }
             }
         }
     }
-}
 
-@Composable
-private fun HapticsSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
-    SectionCard {
-        Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
-            SectionTitle("Rung phản hồi")
-            SwitchRow("Rung khi nhấn", prefs.hapticsEnabled) { settings.setHapticsEnabled(it) }
-            if (prefs.hapticsEnabled) {
-                FieldLabel("Mức rung")
-                ChipRow(
-                    options = HapticStrength.entries.map { it.label },
-                    selectedIndex = HapticStrength.entries.indexOf(prefs.hapticStrength),
-                    onSelect = { settings.setHapticStrength(HapticStrength.entries[it]) },
-                )
-            }
+    SettingsGroup("Gõ") {
+        SwitchSetting("Gõ Telex", "aa → â, dd → đ, s f r x j → dấu", prefs.telexEnabled) { settings.setTelexEnabled(it) }
+        SettingsDivider()
+        SwitchSetting("Tự viết hoa đầu câu", "Đầu ô nhập và sau . ! ? xuống dòng", prefs.autoCap) { settings.setAutoCap(it) }
+        SettingsDivider()
+        SwitchSetting("Hai lần dấu cách = dấu chấm", null, prefs.doubleSpacePeriod) { settings.setDoubleSpacePeriod(it) }
+        SettingsDivider()
+        SwitchSetting("Phóng to phím khi nhấn", null, prefs.popupEnabled) { settings.setPopupEnabled(it) }
+    }
+
+    SettingsGroup("Gợi ý") {
+        SwitchSetting("Gợi ý từ", "Dải gợi ý phía trên bàn phím", prefs.suggestionsEnabled) { settings.setSuggestionsEnabled(it) }
+        SettingsDivider()
+        SwitchSetting("Học từ đã gõ", "Chỉ lưu trên máy, không học trong ô mật khẩu", prefs.learnWords) { settings.setLearnWords(it) }
+    }
+
+    SettingsGroup("Nhập nhanh") {
+        val active = triggerState.active
+        NavSetting(
+            "Phím ⚡",
+            when {
+                active == null -> "Chưa có mục nào"
+                active.kind == TriggerKind.SECRET -> "${triggerState.entries.size} mục · đang dùng: ${active.label} (mật khẩu)"
+                else -> "${triggerState.entries.size} mục · đang dùng: ${active.label}"
+            },
+        ) { onOpen(SettingsPage.TRIGGER) }
+    }
+
+    SettingsGroup("Giao diện") {
+        val sources = listOf(ColorSource.SYSTEM_ZERO, ColorSource.SYSTEM, ColorSource.CUSTOM)
+        ChoiceSetting(
+            "Nguồn màu",
+            when (prefs.colorSource) {
+                ColorSource.SYSTEM_ZERO -> "Theo bảng màu System Zero, tự đổi khi System Zero đổi"
+                ColorSource.SYSTEM -> "Theo Material You của hệ thống"
+                ColorSource.CUSTOM -> "Màu chủ đạo tự chọn"
+            },
+            listOf("System Zero", "Hệ thống", "Tuỳ chỉnh"),
+            sources.indexOf(prefs.colorSource).coerceAtLeast(0),
+        ) { settings.setColorSource(sources[it]) }
+        if (prefs.colorSource != ColorSource.SYSTEM_ZERO) {
+            SettingsDivider()
+            ChoiceSetting(
+                "Sáng / tối", null,
+                AppearanceMode.entries.map { it.label },
+                AppearanceMode.entries.indexOf(prefs.mode),
+            ) { settings.setMode(AppearanceMode.entries[it]) }
         }
+        if (prefs.colorSource == ColorSource.CUSTOM) {
+            SettingsDivider()
+            SettingsBlock("Màu chủ đạo") { SeedSwatches(prefs.customSeed) { settings.setCustomSeed(it) } }
+        }
+    }
+
+    SettingsGroup("Âm thanh & rung") {
+        SwitchSetting("Âm phím", "Tiếng switch linear", prefs.soundEnabled) { settings.setSoundEnabled(it) }
+        if (prefs.soundEnabled) {
+            SliderSetting("Âm lượng", prefs.soundVolume, "${(prefs.soundVolume * 100).toInt()}%") { settings.setSoundVolume(it) }
+        }
+        SettingsDivider()
+        SwitchSetting(
+            "Rung khi nhấn",
+            "Chạy cả khi rung chạm của hệ thống đang tắt",
+            prefs.hapticsEnabled,
+        ) { settings.setHapticsEnabled(it) }
+        if (prefs.hapticsEnabled) {
+            ChoiceSetting(
+                "Mức rung", null,
+                HapticStrength.entries.map { it.label },
+                HapticStrength.entries.indexOf(prefs.hapticStrength),
+            ) { settings.setHapticStrength(HapticStrength.entries[it]) }
+        }
+    }
+
+    SettingsGroup("Bộ nhớ tạm") {
+        SwitchSetting(
+            "Lưu lịch sử bộ nhớ tạm",
+            "Mở bằng nút 📋 trên dải gợi ý. Không lưu nội dung từ ô mật khẩu.",
+            prefs.clipboardEnabled,
+        ) { settings.setClipboardEnabled(it) }
+    }
+
+    SettingsGroup("Khác") {
+        NavSetting("Nâng cao", "Cách hiện từ đang gõ, kiểm tra cầu màu System Zero") { onOpen(SettingsPage.ADVANCED) }
+        SettingsDivider()
+        val context = LocalContext.current
+        val version = runCatching { context.packageManager.getPackageInfo(context.packageName, 0).versionName }.getOrNull() ?: "?"
+        SettingsRow("Phiên bản", version)
     }
 }
 
 @Composable
-private fun InputSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
-    SectionCard {
-        Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
-            SectionTitle("Gõ tiếng Việt")
-            SwitchRow("Telex", prefs.telexEnabled) { settings.setTelexEnabled(it) }
-            SwitchRow("Popup xem trước phím", prefs.popupEnabled) { settings.setPopupEnabled(it) }
-            SwitchRow("Tự viết hoa đầu câu", prefs.autoCap) { settings.setAutoCap(it) }
-            SwitchRow("Hai lần space = dấu chấm", prefs.doubleSpacePeriod) { settings.setDoubleSpacePeriod(it) }
-        }
+private fun AdvancedPage(prefs: KeyboardPrefs, settings: KeyboardSettings) {
+    SettingsGroup("Hiện từ đang gõ") {
+        SwitchSetting(
+            "Gạch chân từ đang gõ",
+            "Tắt (khuyên dùng): chữ ghi thẳng vào ô, không gạch chân. Bật nếu một app nào đó gõ bị lỗi chữ.",
+            prefs.composingUnderline,
+        ) { settings.setComposingUnderline(it) }
     }
-}
-
-@Composable
-private fun SuggestionsSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
-    SectionCard {
-        Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
-            SectionTitle("Gợi ý")
-            SwitchRow("Gợi ý từ", prefs.suggestionsEnabled) { settings.setSuggestionsEnabled(it) }
-            SwitchRow("Học từ đã gõ", prefs.learnWords) { settings.setLearnWords(it) }
-        }
-    }
-}
-
-@Composable
-private fun ClipboardSection(prefs: KeyboardPrefs, settings: KeyboardSettings) {
-    SectionCard {
-        Column(Modifier.padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Gutter)) {
-            SectionTitle("Bộ nhớ tạm")
-            SwitchRow("Bật", prefs.clipboardEnabled) { settings.setClipboardEnabled(it) }
-        }
-    }
-}
-
-@Composable
-private fun SectionCard(content: @Composable () -> Unit) {
-    Card(
-        Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(ZeroRadius.Panel),
-        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow),
-    ) { content() }
-}
-
-@Composable
-private fun SectionTitle(text: String) {
-    Text(text, style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-}
-
-@Composable
-private fun FieldLabel(text: String) {
-    Text(text, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.onSurfaceVariant)
-}
-
-@Composable
-private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-        Text(
-            label,
-            style = MaterialTheme.typography.bodyLarge,
-            color = MaterialTheme.colorScheme.onSurface,
-            modifier = Modifier.weight(1f),
-        )
-        Switch(checked = checked, onCheckedChange = onChange)
-    }
-}
-
-@Composable
-private fun ChipRow(options: List<String>, selectedIndex: Int, onSelect: (Int) -> Unit) {
-    Row(horizontalArrangement = Arrangement.spacedBy(ZeroSpace.Row)) {
-        options.forEachIndexed { index, label ->
-            FilterChip(selected = index == selectedIndex, onClick = { onSelect(index) }, label = { Text(label) })
-        }
+    SettingsGroup("Cầu màu System Zero") {
+        BridgeDebugSection(prefs, settings)
     }
 }
 
@@ -237,17 +242,17 @@ private val SeedPresets = listOf(
 private fun SeedSwatches(selected: Int, onSelect: (Int) -> Unit) {
     Row(horizontalArrangement = Arrangement.spacedBy(ZeroSpace.Row)) {
         SeedPresets.forEach { seed ->
-            val isSel = seed == selected
             Box(
                 Modifier
-                    .size(36.dp)
+                    .size(32.dp)
                     .background(Color(seed), CircleShape)
                     .then(
-                        if (isSel) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                        if (seed == selected) Modifier.border(2.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
                         else Modifier,
                     )
                     .clickable { onSelect(seed) },
             )
         }
     }
+    Spacer(Modifier.height(2.dp))
 }

@@ -2,18 +2,17 @@ package app.neokeyboard.sound
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioManager
 import android.media.SoundPool
 import app.neokeyboard.R
 
 /**
- * Âm switch "cream" tự tổng hợp (res/raw). SoundPool cho độ trễ thấp; usage SONIFICATION
+ * Âm switch linear tự tổng hợp (res/raw, xem tools/sounds/build_cream_sounds.py). SoundPool cho độ trễ thấp; usage SONIFICATION
  * để đi đúng đường âm phản hồi. 3 biến thể mỗi loại để tránh lặp. Bỏ qua nếu chưa load xong
  * (không block phím) và im khi máy ở chế độ im lặng.
  */
-class CreamSoundPlayer(context: Context) {
+class CreamSoundPlayer(context: Context, private val ringer: RingerWatch) {
     private val appContext = context.applicationContext
-    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val jitter = java.util.Random()
 
     private val pool = SoundPool.Builder()
         .setMaxStreams(8)
@@ -50,13 +49,15 @@ class CreamSoundPlayer(context: Context) {
 
     private fun play(ids: IntArray, enabled: Boolean, volume: Float, isPress: Boolean) {
         if (!enabled || volume <= 0f || ids.isEmpty()) return
-        if (audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT) return
+        if (ringer.silent) return
         val index = if (isPress) pressNext else releaseNext
         val id = ids[index]
         if (isPress) pressNext = (pressNext + 1) % ids.size else releaseNext = (releaseNext + 1) % ids.size
         if (id !in loaded) return
-        val v = volume.coerceIn(0f, 1f)
-        pool.play(id, v, v, 1, 0, 1f)
+        // Release (top-out) của linear nhẹ hơn hẳn press; nếu bằng nhau sẽ thành "tạch tạch" hai nhịp.
+        val v = (volume * if (isPress) 1f else 0.45f).coerceIn(0f, 1f)
+        val rate = 0.98f + jitter.nextFloat() * 0.04f
+        pool.play(id, v, v, 1, 0, rate)
     }
 
     fun release() {

@@ -24,6 +24,7 @@ import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.role
 import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.dp
 import app.neokeyboard.ui.design.ZeroSize
 import app.neokeyboard.ui.design.ZeroSpace
 
@@ -36,6 +37,8 @@ fun CandidateStrip(
     candidates: List<String>,
     onPick: (String) -> Unit,
     onClipboard: () -> Unit = {},
+    onSettings: () -> Unit = {},
+    showClipboard: Boolean = true,
     landscape: Boolean = false,
     modifier: Modifier = Modifier,
 ) {
@@ -48,6 +51,7 @@ fun CandidateStrip(
             .testTag("candidate-strip"),
         verticalAlignment = Alignment.CenterVertically,
     ) {
+        StripIconButton(KeyGlyph.SETTINGS, "Cài đặt bàn phím", height, onSettings)
         Row(
             modifier = Modifier
                 .weight(1f)
@@ -76,22 +80,83 @@ fun CandidateStrip(
                 }
             }
         }
-        Box(
-            Modifier
-                .size(height)
-                .clip(CircleShape)
-                .clickable { onClipboard() }
-                .semantics {
-                    role = Role.Button
-                    contentDescription = "Bộ nhớ tạm"
-                },
-            contentAlignment = Alignment.Center,
+        if (showClipboard) StripIconButton(KeyGlyph.CLIPBOARD, "Bộ nhớ tạm", height, onClipboard)
+    }
+}
+
+@Composable
+private fun StripIconButton(glyph: KeyGlyph, description: String, height: androidx.compose.ui.unit.Dp, onClick: () -> Unit) {
+    Box(
+        Modifier
+            .size(height)
+            .clip(CircleShape)
+            .clickable { onClick() }
+            .semantics {
+                role = Role.Button
+                contentDescription = description
+            },
+        contentAlignment = Alignment.Center,
+    ) {
+        KeyIcon(glyph, MaterialTheme.colorScheme.onSurfaceVariant, Modifier.size(ZeroSize.IconLarge))
+    }
+}
+
+/**
+ * Dải chọn trigger (giữ phím ⚡). Thay chỗ dải gợi ý, cùng chiều cao → bàn phím không nhảy.
+ * Chỉ hiện nhãn; mục mật khẩu có ổ khóa, không bao giờ hiện giá trị.
+ */
+@Composable
+fun TriggerStrip(
+    items: List<app.neokeyboard.ime.TriggerChip>,
+    onPick: (String) -> Unit,
+    onManage: () -> Unit,
+    onClose: () -> Unit,
+    landscape: Boolean = false,
+) {
+    val height = if (landscape) ZeroSize.SuggestionHeightLandscape else ZeroSize.SuggestionHeight
+    val scheme = MaterialTheme.colorScheme
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(scheme.surfaceContainerLow)
+            .testTag("trigger-strip"),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        StripIconButton(KeyGlyph.CLOSE, "Đóng", height, onClose)
+        Row(
+            Modifier.weight(1f).horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(ZeroSpace.Row),
+            verticalAlignment = Alignment.CenterVertically,
         ) {
-            KeyIcon(
-                KeyGlyph.CLIPBOARD,
-                MaterialTheme.colorScheme.onSurfaceVariant,
-                Modifier.size(ZeroSize.IconLarge),
-            )
+            if (items.isEmpty()) {
+                Text(
+                    "Chưa có mục nhập nhanh — bấm ⚙ để thêm",
+                    style = MaterialTheme.typography.labelLarge,
+                    color = scheme.onSurfaceVariant,
+                    maxLines = 1,
+                )
+            }
+            items.forEach { item ->
+                Row(
+                    Modifier
+                        .clip(CircleShape)
+                        .background(if (item.active) scheme.secondaryContainer else scheme.surfaceContainerHigh)
+                        .clickable { onPick(item.id) }
+                        .padding(horizontal = ZeroSpace.Gutter, vertical = ZeroSpace.Row)
+                        .semantics {
+                            role = Role.Button
+                            contentDescription = "Nhập nhanh: ${item.label}"
+                        },
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(ZeroSpace.Row),
+                ) {
+                    val tint = if (item.active) scheme.onSecondaryContainer else scheme.onSurface
+                    KeyIcon(if (item.secret) KeyGlyph.LOCK else KeyGlyph.BOLT, tint, Modifier.size(16.dp))
+                    Text(item.label, style = MaterialTheme.typography.titleSmall, color = tint, maxLines = 1)
+                }
+            }
         }
+        StripIconButton(KeyGlyph.SETTINGS, "Cài đặt nhập nhanh", height, onManage)
     }
 }

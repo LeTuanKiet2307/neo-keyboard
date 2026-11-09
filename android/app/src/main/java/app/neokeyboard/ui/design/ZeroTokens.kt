@@ -170,13 +170,19 @@ object ZeroSize {
     val OverlayInset: Dp = 20.dp
     const val OverlayHeightFraction: Float = 0.72f
 
-    /** G-board parity (ảnh đo 720x1612, density 1.8): phím ~30.8dp rộng, cao ~44dp. */
-    val KeyHeightPortrait: Dp = 44.dp
-    val KeyHeightLandscape: Dp = 40.dp
-    /** Gap ngang giữa phím đo ~7.5dp → 8dp; gap dọc đo ~8.3dp → 8dp. */
-    val KeyGap: Dp = 8.dp
-    /** Lề ngang đo ~10.8dp → 12dp (Gutter). */
-    val KeySideMargin: Dp = 12.dp
+    /**
+     * Bước hàng phím (ô chạm, gồm cả khe). Ô chạm phủ kín khe: chạm vào khe vẫn trúng phím gần
+     * nhất thay vì mất (trước đây khe 8dp là vùng chết → hay hụt).
+     */
+    val KeyRowPitchPortrait: Dp = 52.dp
+    val KeyRowPitchLandscape: Dp = 46.dp
+    /** Khe nhìn thấy giữa hai keycap: ngang 4dp, dọc 6dp (mỗi ô lùi một nửa vào trong). */
+    val KeyGapH: Dp = 4.dp
+    val KeyGapV: Dp = 6.dp
+    /** Khe dùng chung cho các khoảng đệm khác của mặt bàn phím. */
+    val KeyGap: Dp = KeyGapV
+    /** Lề ngang ngoài ô chạm; cộng nửa khe → keycap ngoài cùng cách mép 4dp. */
+    val KeySideMargin: Dp = 2.dp
     /** Thành bên keycap 3D (SPEC: 4→1dp, travel 3dp). */
     val KeyWall: Dp = 4.dp
     val KeyWallPressed: Dp = 1.dp

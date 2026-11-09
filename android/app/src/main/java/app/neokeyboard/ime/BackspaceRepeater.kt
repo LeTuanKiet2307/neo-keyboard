@@ -5,8 +5,8 @@ import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 
 /**
- * Lặp xóa khi giữ backspace (SPEC §8.3): 400ms đầu do NeoKey đảm nhiệm,
- * nhịp 70ms/lần, sau mỗi 5 lần giảm 5ms tới tối thiểu 35ms.
+ * Lặp xóa khi giữ backspace (SPEC §8.3): ngưỡng giữ do NeoKey đảm nhiệm (300ms),
+ * nhịp đầu 50ms/lần, sau mỗi 4 lần giảm 5ms tới tối thiểu 25ms (≈ Gboard khi giữ lâu).
  */
 class BackspaceRepeater(
     private val onDelete: () -> Unit,
@@ -21,13 +21,13 @@ class BackspaceRepeater(
         isRepeating = true
         job = scope.launch {
             var count = 0
-            var delayMs = 70L
+            var delayMs = 50L
             while (true) {
                 delay(delayMs)
                 onDelete()
                 onTick()
                 count++
-                if (count % 5 == 0 && delayMs > 35L) delayMs = (delayMs - 5L).coerceAtLeast(35L)
+                if (count % 4 == 0 && delayMs > 25L) delayMs = (delayMs - 5L).coerceAtLeast(25L)
             }
         }
     }

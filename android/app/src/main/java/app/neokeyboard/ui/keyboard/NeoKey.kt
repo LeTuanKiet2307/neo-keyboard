@@ -7,7 +7,9 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -72,6 +74,8 @@ fun NeoKey(
     onKeyCancel: (Key) -> Unit = {},
     onBackspaceRepeatStart: () -> Unit = {},
     onBackspaceWordDelete: () -> Unit = {},
+    onTriggerLongPress: () -> Unit = {},
+    inset: androidx.compose.foundation.layout.PaddingValues = androidx.compose.foundation.layout.PaddingValues(0.dp),
     modifier: Modifier = Modifier,
 ) {
     var pressed by remember { mutableStateOf(false) }
@@ -81,6 +85,7 @@ fun NeoKey(
     val currentOnKeyCancel by rememberUpdatedState(onKeyCancel)
     val currentOnBackspaceRepeatStart by rememberUpdatedState(onBackspaceRepeatStart)
     val currentOnBackspaceWordDelete by rememberUpdatedState(onBackspaceWordDelete)
+    val currentOnTriggerLongPress by rememberUpdatedState(onTriggerLongPress)
     val motion = LocalZeroMotion.current
     val scheme = MaterialTheme.colorScheme
     val density = LocalDensity.current
@@ -99,18 +104,25 @@ fun NeoKey(
     val progress = remember { Animatable(0f) }
     val travelPx = remember(density) { with(density) { ZeroSize.KeyTravel.toPx() } }
 
-    val isFunctional = key.special != Special.NONE && key.special != Special.SPACE && key.special != Special.EMOJI
+    val isSpace = key.special == Special.SPACE
+    val isFunctional = key.special != Special.NONE && !isSpace
+    // Space mang màu nhấn chủ đạo (primaryContainer) của bảng màu System Zero; nhấn thì đậm lên primary.
     val capBase = when {
+        isSpace -> scheme.primaryContainer
         isFunctional -> scheme.surfaceContainerHigh
         else -> scheme.surfaceContainerHighest
     }
-    val capPressedBase = if (isFunctional) scheme.secondaryContainer else scheme.primaryContainer
+    val capPressedBase = when {
+        isSpace -> scheme.primary
+        isFunctional -> scheme.secondaryContainer
+        else -> scheme.primaryContainer
+    }
     val (capTop, capMid, capBottom) = if (pressed) pressedCapStops(capPressedBase) else capStops(capBase)
-    val wallBase = if (pressed) pressedWallColor(capPressedBase) else wallColor(
-        if (isFunctional) scheme.surfaceContainerHigh else scheme.surfaceContainerHighest,
-    )
+    val wallBase = if (pressed) pressedWallColor(capPressedBase) else wallColor(capBase)
     val socketBase = socketColor(scheme.surfaceContainerLow)
     val contentColor = when {
+        isSpace && pressed -> scheme.onPrimary
+        isSpace -> scheme.onPrimaryContainer
         pressed && isFunctional -> scheme.onSecondaryContainer
         pressed -> scheme.onPrimaryContainer
         else -> scheme.onSurface
@@ -123,7 +135,7 @@ fun NeoKey(
         Special.TO_SYMBOLS -> "Bàn phím số"
         Special.TO_LETTERS -> "Bàn phím chữ"
         Special.SPACE -> "Dấu cách"
-        Special.EMOJI -> "Emoji"
+        Special.TRIGGER -> "Nhập nhanh (giữ để chọn)"
         Special.NONE -> displayText(key, ui)
     }
 
@@ -147,8 +159,18 @@ fun NeoKey(
                     val downPos = down.position
                     val repeatJob = if (key.special == Special.BACKSPACE) {
                         scope.launch {
-                            delay(400)
+                            delay(300)
                             if (!canceled) currentOnBackspaceRepeatStart()
+                        }
+                    } else null
+                    var longPressFired = false
+                    val longPressJob = if (key.special == Special.TRIGGER) {
+                        scope.launch {
+                            delay(380)
+                            if (!canceled) {
+                                longPressFired = true
+                                currentOnTriggerLongPress()
+                            }
                         }
                     } else null
                     var upInside = false
@@ -162,6 +184,7 @@ fun NeoKey(
                         if (!inside && !canceled) {
                             canceled = true
                             repeatJob?.cancel()
+                            longPressJob?.cancel()
                             currentOnKeyCancel(key)
                         }
                         if (!wordDeleteConsumed && key.special == Special.BACKSPACE &&
@@ -177,6 +200,7 @@ fun NeoKey(
                         }
                     }
                     repeatJob?.cancel()
+                    longPressJob?.cancel()
                     pressed = false
                     if (motion.enabled) {
                         scope.launch {
@@ -186,7 +210,8 @@ fun NeoKey(
                             )
                         }
                     } else scope.launch { progress.snapTo(0f) }
-                    currentOnKeyUp(key, upInside && !canceled)
+                    // Giữ trigger đã mở dải chọn → thả tay không nhập thêm.
+                    currentOnKeyUp(key, upInside && !canceled && !longPressFired)
                 }
             }
             .semantics {
@@ -194,6 +219,15 @@ fun NeoKey(
                 contentDescription = description
             },
     ) {
+      // Ô ngoài = vùng chạm (phủ cả khe); keycap nhìn thấy lùi vào bằng [inset] và chỉ chiếm
+      // visualWeight/weight chiều ngang (phần dư là vùng chạm mở rộng của 'a'/'l').
+      Box(
+        Modifier
+            .fillMaxHeight()
+            .fillMaxWidth(key.visualWeight / key.weight)
+            .align(if (key.visualAlignEnd) Alignment.CenterEnd else Alignment.CenterStart)
+            .padding(inset),
+      ) {
         // 1. Socket (đế lõm)
         Box(Modifier.fillMaxSize().background(socketBase, shape))
         // 2. Side wall: cố định padding để lộ 4dp ở đáy; cap dịch xuống 3dp → còn 1dp.
@@ -238,6 +272,7 @@ fun NeoKey(
         if (pressed && !canceled && popupEnabled && key.showPopup) {
             KeyPopup(displayText(key, ui))
         }
+      }
     }
 }
 
@@ -254,14 +289,10 @@ private fun KeyLabel(key: Key, ui: KeyboardUiState, color: Color) {
         Special.SPACE -> Text(
             "Tiếng Việt",
             style = MaterialTheme.typography.labelMedium,
-            color = color.copy(alpha = 0.55f),
+            color = color.copy(alpha = 0.8f),
             maxLines = 1,
         )
-        Special.EMOJI -> Text(
-            "😊",
-            style = MaterialTheme.typography.titleLarge,
-            color = color,
-        )
+        Special.TRIGGER -> KeyIcon(KeyGlyph.BOLT, color, Modifier.size(20.dp))
         Special.TO_SYMBOLS, Special.TO_LETTERS -> Text(
             key.text,
             style = MaterialTheme.typography.labelLarge,

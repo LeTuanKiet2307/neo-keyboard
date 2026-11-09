@@ -110,34 +110,125 @@ sealed interface ThemeBridgeState {
     data class Error(val reason: String) : ThemeBridgeState
 }
 
-/** Query provider System Zero, cache SharedPreferences, observer khi IME sống. */
+/** Một lần đọc cầu: số đo để bảng Debug so tốc độ hai bên. Thời gian là ms epoch cùng máy. */
+data class BridgeProbe(
+    val authority: String?,
+    val ok: Boolean,
+    val queryMs: Double,
+    val revision: Long = 0L,
+    val generatedAt: Long = 0L,
+    val servedAt: Long = 0L,
+    val receivedAt: Long = System.currentTimeMillis(),
+    val viaObserver: Boolean = false,
+    val error: String? = null,
+) {
+    /** System Zero ghi xong → Neo Keyboard nhận được (chỉ có nghĩa khi đến từ observer). */
+    val publishToReceiveMs: Long? get() = if (generatedAt > 0 && viaObserver) receivedAt - generatedAt else null
+}
+
+/**
+ * Sổ đo dùng chung trong tiến trình Neo Keyboard (IME và màn cài đặt cùng process) để bảng Debug
+ * thấy đúng những gì bàn phím đã nhận.
+ */
+object ThemeBridgeDebug {
+    private val _last = kotlinx.coroutines.flow.MutableStateFlow<BridgeProbe?>(null)
+    val last: kotlinx.coroutines.flow.StateFlow<BridgeProbe?> = _last
+    private val _observerEvents = kotlinx.coroutines.flow.MutableStateFlow(0)
+    val observerEvents: kotlinx.coroutines.flow.StateFlow<Int> = _observerEvents
+
+    fun record(p: BridgeProbe) { _last.value = p }
+
+    /** IME đăng ký khi sống; nút "Đồng bộ lại" ở cài đặt gọi để bàn phím đọc lại cầu ngay. */
+    @Volatile
+    var resyncHook: (() -> Unit)? = null
+    fun requestResync(): Boolean = resyncHook?.let { it(); true } ?: false
+    fun observerFired() { _observerEvents.value = _observerEvents.value + 1 }
+}
+
+/**
+ * Client cầu màu công khai của System Zero. Dò lần lượt các authority (production, smoke, debug).
+ * Query là IPC đồng bộ → chỉ gọi từ thread nền.
+ */
 class ThemeBridgeClient(context: Context) {
+    private val appContext = context.applicationContext
+
     companion object {
-        const val URI_STRING = "content://app.systemzero.theme/snapshot"
+        const val PRODUCTION = "app.systemzero.theme"
+        val TEST_AUTHORITIES = listOf("app.systemzero.smoke.theme", "app.systemzero.debug.theme")
+        const val URI_STRING = "content://$PRODUCTION/snapshot"
+        fun uriFor(authority: String): android.net.Uri = android.net.Uri.parse("content://$authority/snapshot")
     }
 
-    fun cacheRead(context: Context): ThemeSnapshot? {
+    /**
+     * Authority đầu tiên có provider cài trên máy, null nếu không có System Zero hỗ trợ cầu.
+     * Luôn ưu tiên System Zero thật (màu ảnh nền + cấu hình người dùng); bản smoke/debug chỉ dự phòng.
+     */
+    fun findAuthority(): String? {
+        val order = listOf(PRODUCTION) + TEST_AUTHORITIES
+        return order.firstOrNull { a ->
+            runCatching { appContext.packageManager.resolveContentProvider(a, 0) != null }.getOrDefault(false)
+        }
+    }
+
+    fun cacheRead(context: Context = appContext): ThemeSnapshot? {
         val prefs = context.getSharedPreferences("theme_bridge", Context.MODE_PRIVATE)
         val json = prefs.getString("json", null) ?: return null
         return ThemeSnapshot.parse(json)
     }
 
-    fun cacheWrite(context: Context, json: String) {
+    fun cacheWrite(context: Context = appContext, json: String) {
         context.getSharedPreferences("theme_bridge", Context.MODE_PRIVATE)
             .edit().putString("json", json).apply()
     }
 
-    fun loadSnapshot(context: Context): ThemeSnapshot? {
+    fun loadSnapshot(context: Context = appContext): ThemeSnapshot? = load().first
+
+    /** Đọc snapshot + số đo. Ghi cache khi đọc được. */
+    fun load(authority: String? = findAuthority(), viaObserver: Boolean = false): Pair<ThemeSnapshot?, BridgeProbe> {
+        if (authority == null) {
+            return null to BridgeProbe(null, ok = false, queryMs = 0.0, error = "Không thấy System Zero có cầu màu")
+        }
+        val t0 = System.nanoTime()
         return try {
-            val cursor = context.contentResolver.query(android.net.Uri.parse(URI_STRING), null, null, null, null)
-            cursor?.use {
-                if (it.moveToFirst()) {
-                    val col = it.getColumnIndex("json")
-                    if (col >= 0 && !it.isNull(col)) ThemeSnapshot.parse(it.getString(col)) else null
-                } else null
+            appContext.contentResolver.query(uriFor(authority), null, null, null, null).use { c ->
+                val ms = (System.nanoTime() - t0) / 1_000_000.0
+                if (c == null || !c.moveToFirst()) {
+                    return null to BridgeProbe(authority, ok = false, queryMs = ms, error = "Provider trả rỗng (mở System Zero một lần để xuất màu)")
+                }
+                fun long(name: String): Long = c.getColumnIndex(name).let { if (it >= 0 && !c.isNull(it)) c.getLong(it) else 0L }
+                val col = c.getColumnIndex("json")
+                val json = if (col >= 0 && !c.isNull(col)) c.getString(col) else null
+                val snap = json?.let { ThemeSnapshot.parse(it) }
+                if (json != null && snap != null) cacheWrite(appContext, json)
+                snap to BridgeProbe(
+                    authority, ok = snap != null, queryMs = ms,
+                    revision = snap?.revision ?: long("revision"),
+                    generatedAt = long("generated_at"), servedAt = long("served_at"),
+                    viaObserver = viaObserver,
+                    error = if (snap == null) "JSON sai contract" else null,
+                )
             }
-        } catch (_: Exception) {
-            null
+        } catch (e: Exception) {
+            null to BridgeProbe(authority, ok = false, queryMs = (System.nanoTime() - t0) / 1_000_000.0, error = e.javaClass.simpleName)
+        }
+    }
+
+    /** Nghe System Zero notifyChange → [onChange] chạy trên thread nền của observer. */
+    fun observe(authority: String, onChange: () -> Unit): () -> Unit {
+        val thread = android.os.HandlerThread("neo-theme-bridge").apply { start() }
+        val observer = object : android.database.ContentObserver(android.os.Handler(thread.looper)) {
+            override fun onChange(selfChange: Boolean) {
+                ThemeBridgeDebug.observerFired()
+                onChange()
+            }
+        }
+        val ok = runCatching {
+            appContext.contentResolver.registerContentObserver(uriFor(authority), true, observer)
+        }.isSuccess
+        if (!ok) thread.quitSafely()
+        return {
+            runCatching { appContext.contentResolver.unregisterContentObserver(observer) }
+            thread.quitSafely()
         }
     }
 }

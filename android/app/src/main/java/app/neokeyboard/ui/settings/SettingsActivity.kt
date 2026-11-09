@@ -21,6 +21,10 @@ import app.neokeyboard.ui.NeoTheme
  */
 class SettingsActivity : ComponentActivity() {
     private lateinit var settings: KeyboardSettings
+    private lateinit var triggers: app.neokeyboard.trigger.TriggerStore
+    private var focusSection by mutableStateOf<String?>(null)
+    /** Cùng bảng màu System Zero với bàn phím: đọc cache ngay, làm mới từ cầu ở onResume. */
+    private var themeSnapshot by mutableStateOf<app.neokeyboard.theme.ThemeSnapshot?>(null)
     private var imeEnabled by mutableStateOf(false)
     private var imeSelected by mutableStateOf(false)
 
@@ -28,9 +32,13 @@ class SettingsActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         settings = KeyboardSettings(this)
+        triggers = app.neokeyboard.trigger.TriggerStore(this)
+        focusSection = intent?.getStringExtra(EXTRA_SECTION)
+        themeSnapshot = runCatching { app.neokeyboard.theme.ThemeBridgeClient(this).cacheRead(this) }.getOrNull()
         setContent {
             val prefs by settings.state.collectAsState()
-            NeoTheme(mode = prefs.mode, colorSource = prefs.colorSource, seed = prefs.customSeed) {
+            val triggerState by triggers.state.collectAsState()
+            NeoTheme(mode = prefs.mode, colorSource = prefs.colorSource, seed = prefs.customSeed, systemZero = themeSnapshot) {
                 SettingsScreen(
                     prefs = prefs,
                     settings = settings,
@@ -38,19 +46,38 @@ class SettingsActivity : ComponentActivity() {
                     imeSelected = imeSelected,
                     onOpenImeSettings = { startActivity(Intent(Settings.ACTION_INPUT_METHOD_SETTINGS)) },
                     onShowPicker = { getSystemService(InputMethodManager::class.java).showInputMethodPicker() },
+                    triggerState = triggerState,
+                    triggers = triggers,
+                    focusSection = focusSection,
                 )
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        focusSection = intent.getStringExtra(EXTRA_SECTION)
     }
 
     override fun onResume() {
         super.onResume()
         imeEnabled = isNeoEnabled(this)
         imeSelected = isNeoSelected(this)
+        val context = applicationContext
+        Thread {
+            val fresh = runCatching { app.neokeyboard.theme.ThemeBridgeClient(context).loadSnapshot(context) }.getOrNull()
+            if (fresh != null) runOnUiThread { themeSnapshot = fresh }
+        }.start()
     }
 
     override fun onDestroy() {
         if (::settings.isInitialized) settings.close()
+        if (::triggers.isInitialized) triggers.close()
         super.onDestroy()
+    }
+
+    companion object {
+        const val EXTRA_SECTION = "section"
+        const val SECTION_TRIGGER = "trigger"
     }
 }

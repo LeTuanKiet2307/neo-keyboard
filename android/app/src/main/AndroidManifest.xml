@@ -4,6 +4,13 @@
     <!-- Bàn phím offline: chỉ xin rung. KHÔNG có INTERNET — mọi thứ gõ ở lại trên máy. -->
     <uses-permission android:name="android.permission.VIBRATE" />
 
+    <!-- Android 11+: phải khai báo mới thấy provider cầu màu của System Zero (production/smoke/debug). -->
+    <queries>
+        <provider android:authorities="app.systemzero.theme" />
+        <provider android:authorities="app.systemzero.smoke.theme" />
+        <provider android:authorities="app.systemzero.debug.theme" />
+    </queries>
+
     <application
         android:allowBackup="false"
         android:icon="@mipmap/ic_launcher"

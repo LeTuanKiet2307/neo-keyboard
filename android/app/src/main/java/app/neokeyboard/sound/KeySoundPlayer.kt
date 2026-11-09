@@ -2,7 +2,6 @@ package app.neokeyboard.sound
 
 import android.content.Context
 import android.media.AudioAttributes
-import android.media.AudioManager
 import android.media.SoundPool
 
 /**
@@ -12,8 +11,8 @@ import android.media.SoundPool
 class KeySoundPlayer(context: Context) {
     private val appContext = context.applicationContext
     private val repo = SoundPackRepository(appContext)
-    private val legacy = CreamSoundPlayer(appContext)
-    private val audioManager = appContext.getSystemService(Context.AUDIO_SERVICE) as AudioManager
+    private val ringer = RingerWatch(appContext)
+    private val legacy = CreamSoundPlayer(appContext, ringer)
     private val pool = SoundPool.Builder()
         .setMaxStreams(12)
         .setAudioAttributes(
@@ -63,17 +62,18 @@ class KeySoundPlayer(context: Context) {
 
     private fun playPool(ids: List<Int>, enabled: Boolean, volume: Float, isPress: Boolean) {
         if (!enabled || volume <= 0f || ids.isEmpty()) return
-        if (audioManager.ringerMode == AudioManager.RINGER_MODE_SILENT) return
+        if (ringer.silent) return
         val idx = if (isPress) pressIdx else releaseIdx
         val id = ids[idx % ids.size]
         if (isPress) pressIdx = (pressIdx + 1) % ids.size else releaseIdx = (releaseIdx + 1) % ids.size
         if (id !in loaded) return
-        val v = (volume * (if (isPress) 1f else 0.85f)).coerceIn(0f, 1f)
+        val v = (volume * (if (isPress) 1f else 0.45f)).coerceIn(0f, 1f)
         pool.play(id, v, v, 1, 0, 0.97f + Math.random().toFloat() * 0.06f)
     }
 
     fun release() {
         pool.release()
         legacy.release()
+        ringer.close()
     }
 }

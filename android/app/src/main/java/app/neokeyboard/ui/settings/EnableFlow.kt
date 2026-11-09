@@ -36,33 +36,3 @@ fun isNeoSelected(context: Context): Boolean {
 
 fun neoImeId(context: Context): String =
     ComponentName(context, NeoImeService::class.java).flattenToShortString()
-
-/**
- * Luồng bật bàn phím: hiện trạng thái + nút mở cài đặt IME và nút chọn bàn phím. Không thể
- * tự bật IME hộ người dùng (đặc quyền hệ thống) — chỉ dẫn tới đúng màn hình.
- */
-@Composable
-fun EnableFlow(
-    enabled: Boolean,
-    selected: Boolean,
-    onOpenSettings: () -> Unit,
-    onShowPicker: () -> Unit,
-    modifier: Modifier = Modifier,
-) {
-    Column(modifier.fillMaxWidth().padding(ZeroSpace.Pad), verticalArrangement = Arrangement.spacedBy(ZeroSpace.Row)) {
-        Text("Bắt đầu", style = MaterialTheme.typography.titleMedium, color = MaterialTheme.colorScheme.onSurface)
-        Text(
-            text = when {
-                !enabled -> "Chưa bật. Mở Cài đặt nhập liệu để bật Neo Keyboard, rồi chọn nó làm bàn phím."
-                !selected -> "Đã bật nhưng chưa chọn. Chọn Neo Keyboard làm bàn phím hiện tại."
-                else -> "Đang dùng Neo Keyboard. Mở một ô nhập bất kỳ để gõ thử."
-            },
-            style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(ZeroSpace.Row)) {
-            Button(onClick = onOpenSettings) { Text("Mở cài đặt") }
-            Button(onClick = onShowPicker, enabled = enabled) { Text("Chọn bàn phím") }
-        }
-    }
-}

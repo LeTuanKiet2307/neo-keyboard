@@ -60,8 +60,13 @@ class NeoImeService : InputMethodService(),
     private lateinit var haptics: KeyHaptics
     private lateinit var controller: KeyboardController
     private lateinit var clipboardRepo: app.neokeyboard.clipboard.ClipboardRepository
+    private lateinit var triggers: app.neokeyboard.trigger.TriggerStore
     private var themeSnapshot by mutableStateOf<app.neokeyboard.theme.ThemeSnapshot?>(null)
     private var inputComposeView: ComposeView? = null
+    private lateinit var bridge: app.neokeyboard.theme.ThemeBridgeClient
+    private var bridgeAuthority: String? = null
+    private var stopBridgeObserver: (() -> Unit)? = null
+    private val bridgeExecutor = java.util.concurrent.Executors.newSingleThreadExecutor()
 
     private val wallpaperReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -87,7 +92,21 @@ class NeoImeService : InputMethodService(),
         clipboardRepo = runCatching { app.neokeyboard.clipboard.ClipboardRepository(this) }.getOrNull()
             ?.also { it.purgeOlderThan(settings.state.value.clipboardDays) }
             ?: app.neokeyboard.clipboard.ClipboardRepository(this)
-        controller = KeyboardController(this, uiState, settings, sound, haptics, engine, clipboardRepo = clipboardRepo)
+        triggers = app.neokeyboard.trigger.TriggerStore(this)
+        controller = KeyboardController(
+            this, uiState, settings, sound, haptics, engine,
+            clipboardRepo = clipboardRepo, triggers = triggers,
+        )
+        bridge = app.neokeyboard.theme.ThemeBridgeClient(this)
+        themeSnapshot = runCatching { bridge.cacheRead(this) }.getOrNull() // cache trước: không nháy màu
+        app.neokeyboard.theme.ThemeBridgeDebug.resyncHook = {
+            // Cùng executor một luồng với refreshTheme → reset chạy trước lần đọc lại.
+            bridgeExecutor.execute {
+                bridgeAuthority = null // dò lại: System Zero có thể vừa được cài/cài lại
+                stopBridgeObserver?.invoke(); stopBridgeObserver = null
+            }
+            refreshTheme()
+        }
         refreshTheme()
 
         ContextCompat.registerReceiver(
@@ -122,6 +141,11 @@ class NeoImeService : InputMethodService(),
                         onPasteClip = controller::pasteClip,
                         onCloseClipboard = controller::closeClipboard,
                         onPasteSystem = { controller.pasteFromSystem() },
+                        onOpenSettings = { controller.openSettings() },
+                        onTriggerLongPress = controller::openTriggerMenu,
+                        onPickTrigger = controller::pickTrigger,
+                        onManageTriggers = { controller.openSettings(app.neokeyboard.ui.settings.SettingsActivity.SECTION_TRIGGER) },
+                        onCloseTriggerMenu = controller::closeTriggerMenu,
                         clipboardPanel = {
                             app.neokeyboard.clipboard.ClipboardPanel(
                                 repo = clipboardRepo,
@@ -152,7 +176,7 @@ class NeoImeService : InputMethodService(),
     override fun onStartInput(info: EditorInfo?, restarting: Boolean) {
         super.onStartInput(info, restarting)
         controller.onEditorChanged(info)
-        if (!restarting) controller.onStartInput()
+        if (!restarting) controller.onStartInput(info)
     }
 
     override fun onStartInputView(info: EditorInfo?, restarting: Boolean) {
@@ -161,18 +185,23 @@ class NeoImeService : InputMethodService(),
         refreshTheme()
     }
 
-    private fun refreshTheme() {
-        // Query provider + cache IO: không block lần hiện bàn phím (chậm thường do IPC sync).
-        val context = this
-        Thread {
-            val client = app.neokeyboard.theme.ThemeBridgeClient(context)
-            val fresh = try { client.loadSnapshot(context) } catch (_: Exception) { null }
-            if (fresh != null && fresh.revision > (themeSnapshot?.revision ?: Long.MIN_VALUE)) {
-                themeSnapshot = fresh
-            } else if (themeSnapshot == null) {
-                themeSnapshot = try { client.cacheRead(context) } catch (_: Exception) { null }
+    /**
+     * Đọc cầu màu trên thread nền (query là IPC đồng bộ). Lần đầu tìm authority và gắn observer:
+     * System Zero đổi palette → notifyChange → bàn phím đổi màu ngay, không chờ lần mở sau.
+     */
+    private fun refreshTheme(viaObserver: Boolean = false) {
+        bridgeExecutor.execute {
+            if (bridgeAuthority == null) {
+                bridgeAuthority = bridge.findAuthority()
+                bridgeAuthority?.let { a ->
+                    stopBridgeObserver = bridge.observe(a) { refreshTheme(viaObserver = true) }
+                }
             }
-        }.start()
+            val (fresh, probe) = bridge.load(bridgeAuthority, viaObserver)
+            app.neokeyboard.theme.ThemeBridgeDebug.record(probe)
+            // So cả snapshot chứ không chỉ revision: cài lại System Zero thì revision về 1 nhưng màu khác.
+            if (fresh != null && fresh != themeSnapshot) themeSnapshot = fresh
+        }
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {
@@ -205,9 +234,14 @@ class NeoImeService : InputMethodService(),
         lifecycleRegistry.currentState = Lifecycle.State.DESTROYED
         vmStore.clear()
         runCatching { unregisterReceiver(wallpaperReceiver) }
+        app.neokeyboard.theme.ThemeBridgeDebug.resyncHook = null
+        stopBridgeObserver?.invoke()
+        bridgeExecutor.shutdownNow()
         if (::sound.isInitialized) sound.release()
         if (::controller.isInitialized) controller.close()
         if (::settings.isInitialized) settings.close()
+        if (::triggers.isInitialized) triggers.close()
+        if (::haptics.isInitialized) haptics.close()
         super.onDestroy()
     }
 }
