@@ -79,7 +79,11 @@ class NeoImeService : InputMethodService(),
         sound = KeySoundPlayer(this)
         haptics = KeyHaptics(this)
         val store = runCatching { UserLexiconStore(this) }.getOrNull()
-        val engine = LexiconSuggestionEngine(BundledLexicon.starter(), store) { settings.state.value.learnWords }
+        val lexicon = runCatching {
+            val bytes = assets.open("lexicon/vi_lexicon.bin").use { it.readBytes() }
+            BundledLexicon.fromBytes(bytes)
+        }.getOrNull() ?: BundledLexicon.starter()
+        val engine = LexiconSuggestionEngine(lexicon, store) { settings.state.value.learnWords }
         clipboardRepo = runCatching { app.neokeyboard.clipboard.ClipboardRepository(this) }.getOrNull()
             ?.also { it.purgeOlderThan(settings.state.value.clipboardDays) }
             ?: app.neokeyboard.clipboard.ClipboardRepository(this)
@@ -158,13 +162,17 @@ class NeoImeService : InputMethodService(),
     }
 
     private fun refreshTheme() {
-        val client = app.neokeyboard.theme.ThemeBridgeClient(this)
-        val fresh = try { client.loadSnapshot(this) } catch (_: Exception) { null }
-        if (fresh != null && fresh.revision > (themeSnapshot?.revision ?: Long.MIN_VALUE)) {
-            themeSnapshot = fresh
-        } else if (themeSnapshot == null) {
-            themeSnapshot = try { client.cacheRead(this) } catch (_: Exception) { null }
-        }
+        // Query provider + cache IO: không block lần hiện bàn phím (chậm thường do IPC sync).
+        val context = this
+        Thread {
+            val client = app.neokeyboard.theme.ThemeBridgeClient(context)
+            val fresh = try { client.loadSnapshot(context) } catch (_: Exception) { null }
+            if (fresh != null && fresh.revision > (themeSnapshot?.revision ?: Long.MIN_VALUE)) {
+                themeSnapshot = fresh
+            } else if (themeSnapshot == null) {
+                themeSnapshot = try { client.cacheRead(context) } catch (_: Exception) { null }
+            }
+        }.start()
     }
 
     override fun onFinishInputView(finishingInput: Boolean) {

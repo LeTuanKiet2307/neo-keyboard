@@ -21,11 +21,15 @@ def main():
         except ValueError:
             freq = 1
         words[w] = max(words.get(w, 0), freq)
-    items = sorted(words.items())
+    def strip(s):
+        nfd = unicodedata.normalize("NFD", s)
+        out = "".join(c for c in nfd if unicodedata.category(c) != "Mn")
+        return out.replace("đ", "d").replace("Đ", "d").lower()
+    items = sorted(words.items(), key=lambda kv: strip(kv[0]))
     out = Path(a.out)
     out.parent.mkdir(parents=True, exist_ok=True)
     with open(out, "wb") as fh:
-        fh.write(b"NEOLEX1")
+        fh.write(b"NEOLEX1\x00")
         fh.write(struct.pack(">I", 1))
         fh.write(struct.pack(">I", len(items)))
         for w, f in items:

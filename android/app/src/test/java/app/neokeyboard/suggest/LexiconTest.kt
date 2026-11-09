@@ -7,7 +7,7 @@ class LexiconTest {
     private val lex = BundledLexicon.starter()
 
     @Test fun prefixNgu() {
-        val out = lex.prefixSearch("ngư", 4)
+        val out = lex.prefixSearch("ngu", 4)
         assertTrue(out.any { it.word == "người" })
         assertTrue(out.size <= 4)
     }

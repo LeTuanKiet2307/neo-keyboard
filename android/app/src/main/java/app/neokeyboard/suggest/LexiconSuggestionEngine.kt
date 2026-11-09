@@ -1,29 +1,37 @@
 package app.neokeyboard.suggest
 
-/** Engine gợi ý completion + next-word (SPEC §5.5). */
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.launch
+
+/** Engine gợi ý completion + next-word (SPEC §5.5). Học ghi nền, tìm kiếm dùng cache. */
 class LexiconSuggestionEngine(
     private val lexicon: BundledLexicon,
     private val userStore: UserLexiconStore?,
     private val learnEnabled: () -> Boolean = { true },
 ) : SuggestionEngine {
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private var lastCommitted: String = ""
     private val starterNext = listOf("là", "của", "và", "có", "không", "được", "cho", "một", "những", "này", "thì", "mà", "để", "với", "khi")
 
     override fun onComposingChanged(composing: String): List<String> {
-        val q = BundledLexicon.normalize(composing)
+        val raw = composing.trim()
+        if (raw.isEmpty()) return emptyList()
+        val q = BundledLexicon.strip(raw)
         if (q.isEmpty()) return emptyList()
-        val hits = lexicon.prefixSearch(q, 12)
+        // hits từ lexicon (đã bỏ dấu) + từ người dùng có cùng prefix.
+        val hits = lexicon.prefixSearch(raw, 12)
         if (hits.isEmpty()) return emptyList()
-        val now = System.currentTimeMillis()
         val scored = hits.map { e ->
-            val userBoost = if ((userStore?.wordFreq(e.word) ?: 0) > 0) 3f else 1f
-            val score = e.freq * userBoost
-            Triple(e.word, score, now)
+            val boost = if ((userStore?.wordFreq(BundledLexicon.normalize(e.word)) ?: 0) > 0) 3f else 1f
+            e.word to (e.freq * boost)
         }.sortedByDescending { it.second }
         val out = mutableListOf<String>()
-        // Khớp chính xác lên đầu (kiểu TYPED).
-        if (scored.any { it.first == q }) out.add(q)
-        scored.forEach { (w, _, _) -> if (w !in out && w.length <= 30) out.add(w) }
+        // Khớp chính xác (dạng hiển thị) lên đầu (kiểu TYPED).
+        val exact = BundledLexicon.normalize(raw)
+        if (scored.any { BundledLexicon.normalize(it.first) == exact }) out.add(raw)
+        scored.forEach { (w, _) -> if (w !in out && w.length <= 30 && !w.contains(" ")) out.add(w) }
         return out.take(4)
     }
 
@@ -40,11 +48,12 @@ class LexiconSuggestionEngine(
     override fun onWordCommitted(word: String) {
         if (word.isEmpty() || !learnEnabled()) return
         val w = BundledLexicon.normalize(word)
-        userStore?.learnWord(w, System.currentTimeMillis())
-        if (lastCommitted.isNotEmpty()) {
-            userStore?.learnBigram(lastCommitted, w, System.currentTimeMillis())
-        }
+        val prev = lastCommitted
         lastCommitted = w
+        scope.launch {
+            userStore?.learnWord(w, System.currentTimeMillis())
+            if (prev.isNotEmpty()) userStore?.learnBigram(prev, w, System.currentTimeMillis())
+        }
     }
 
     override fun reset() {
