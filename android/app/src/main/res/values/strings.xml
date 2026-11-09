@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Neo Keyboard</string>
+    <string name="ime_name">Neo Keyboard</string>
+    <string name="subtype_vi">Tiếng Việt (Telex)</string>
+    <string name="subtype_en">English</string>
+</resources>
