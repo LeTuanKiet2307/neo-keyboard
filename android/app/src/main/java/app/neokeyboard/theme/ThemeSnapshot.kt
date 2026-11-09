@@ -5,7 +5,6 @@ import androidx.compose.material3.ColorScheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.ui.graphics.Color
-import org.json.JSONObject
 
 /** Snapshot màu System Zero (SPEC §7.4): đủ 36 role light/dark. */
 data class ThemeSnapshot(
@@ -67,20 +66,33 @@ data class ThemeSnapshot(
 
     companion object {
         fun parse(json: String): ThemeSnapshot? = runCatching {
-            val o = JSONObject(json)
-            if (o.optInt("contract", -1) != 1) return@runCatching null
+            fun intField(name: String): Int? =
+                Regex(""""$name"\s*:\s*(-?\d+)""").find(json)?.groupValues?.getOrNull(1)?.toIntOrNull()
+            fun longField(name: String): Long? =
+                Regex(""""$name"\s*:\s*(-?\d+)""").find(json)?.groupValues?.getOrNull(1)?.toLongOrNull()
+            fun strField(name: String): String? =
+                Regex(""""$name"\s*:\s*"([^"]*)"""").find(json)?.groupValues?.getOrNull(1)
+            val contract = intField("contract") ?: return@runCatching null
+            if (contract != 1) return@runCatching null
             fun mapOf(name: String): Map<String, Int> {
-                val obj = o.optJSONObject(name) ?: return emptyMap()
+                val block = Regex(""""$name"\s*:\s*\{([^}]*)\}""").find(json)?.groupValues?.getOrNull(1) ?: return emptyMap()
                 val m = mutableMapOf<String, Int>()
-                val keys = obj.keys()
-                while (keys.hasNext()) { val k = keys.next(); m[k] = obj.optInt(k, Int.MIN_VALUE) }
+                Regex(""""([A-Za-z0-9_]+)"\s*:\s*(-?\d+)""").findAll(block).forEach { mm ->
+                    mm.groupValues.getOrNull(1)?.let { k ->
+                        mm.groupValues.getOrNull(2)?.toIntOrNull()?.let { v -> m[k] = v }
+                    }
+                }
                 return m
             }
             ThemeSnapshot(
-                contract = o.optInt("contract", 1),
-                revision = o.optLong("revision", 0L),
-                mode = o.optString("mode", "SYSTEM"),
-                wallpaperLight = if (o.has("wallpaperLight") && !o.isNull("wallpaperLight")) o.optBoolean("wallpaperLight") else null,
+                contract = contract,
+                revision = longField("revision") ?: 0L,
+                mode = strField("mode") ?: "SYSTEM",
+                wallpaperLight = when {
+                    json.contains("\"wallpaperLight\":true") -> true
+                    json.contains("\"wallpaperLight\":false") -> false
+                    else -> null
+                },
                 light = mapOf("light"),
                 dark = mapOf("dark"),
                 extrasLight = mapOf("extrasLight"),
