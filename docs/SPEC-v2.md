@@ -1357,7 +1357,7 @@ CREATE INDEX clips_created ON clips(created_at DESC);
 - Tạo keystore ngoài repo: `~/.local/share/neo-keyboard/release.jks`.
 - `keystore.properties` (không commit):
   ```
-  storeFile=/home/tuankiet/.local/share/neo-keyboard/release.jks
+  storeFile=~/.local/share/neo-keyboard/release.jks
   storePassword=...
   keyAlias=neo-keyboard
   keyPassword=...
@@ -1503,7 +1503,7 @@ Tổng mục tiêu: ≥ 80 case mới, không tính 11 Telex cũ. Không sửa t
 
 ```bash
 export JAVA_HOME=~/.local/share/mise/installs/java/temurin-21
-cd /home/tuankiet/Projects/TuanKiet_memory/Neo_keyboard/android
+cd Neo_keyboard/android
 ./gradlew :app:testDebugUnitTest :app:assembleDebug :app:lintDebug
 ```
 
